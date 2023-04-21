@@ -1,0 +1,15 @@
+*~
+~*
+.*.swp
+*.bak
+*.tmp
+*.temp
+temp*.*
+!template.*
+.Rhistory
+..Rcheck
+*.Rproj
+.Rproj.user
+CRAN-RELEASE
+cts_results
+ctsframework-vignette.html

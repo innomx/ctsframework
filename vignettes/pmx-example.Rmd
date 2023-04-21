@@ -1,0 +1,337 @@
+---
+title: "`ctsframework` : A Modular Framework for Performing Clinical Trial Simulations"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{`ctsframework` : A Modular Framework for Performing Clinical Trial Simulations}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, error=FALSE)
+```
+
+```{r, echo=FALSE}
+devtools::load_all()
+```
+
+
+
+
+# Introduction
+
+One of the core elements of pharmacometrics is to perform clinical trial
+simulations (CTS) to help inform decisions in clinical drug development (for
+instance, to explore different dosing regimens). The de facto computing
+environment for this is R, and there are many excellent packages that can be
+leveraged.  However, what tends to happen is that the number of different
+"scenarios" that need to be simulated grows exponentially, and as a
+consequence the resulting code tends to explode in complexity and become
+cumbersome to manage. The purpose of the `ctsframework` package is to make the
+CTS process more modular, and to help manage the complexity.
+
+Much as the infamous `ggplot2` package is designed around a "grammar of
+graphics", this package offers a "grammar" of semantically named functions that
+correspond to different components of a clinical trial simulation.  Designed
+for maximum flexibility and convenience. The central object is the scenario.
+Specific functions or "modules" correspond to different aspects of CTS which
+helps with semantics.
+
+
+Withing `ctsframework`, a CTS is specified by one or more scenarios. A scenario
+is broken down into multiple steps or "modules":
+
+- **parameters**: This module can be used to specify any general parameters
+  that are related to a scenario.
+
+- **population**: In most clinical trial simulations, the starting point is
+  defining a population of 'virtual patients'. This module is where you would
+  specify the distribution of demographic characteristics, implement
+  inclusion/exclusion criteria and so on.
+
+- **subject_model**: I don't usually like referring to people as 'subjects',
+  but this is the common terminology used in clinical trials. This is the place
+  where you could specify subject-level differences, like covariate effects or
+  between-subject variability, and individual-level parameters.
+
+- **treatment**: In most clinical trial simulations, the treatment will be of
+  primary interest. This module is intended for specifying treatments, which
+  can be a dose, formulation etc.
+
+- **pkpd_model**: In pharmacometric applications, there will typically be a
+  PK/PD model consisting of by differential equations, which can be specified
+  in this module.
+
+- **simulation**: At this point, it's time to carry out the actual simulation.
+
+- **endpoints**: From the simulation output (which could for instance be a
+  longitudinal data set), a number of endpoints can be derived, which is what
+  this module is intended for.
+
+- **summarization**: This module is intended for summarizing results across
+  individuals, such as taking means, medians, specific quantiles, etc. (Note:
+  this module can only be used to summarize results within a scenario, not
+  across scenarios; the latter is the purpose of the `collate()` function,
+  described below).
+
+At each step, the results of the models that appear higher up are available and
+can be used in the subsequent computation. By mixing and matching different
+modules, it is easy to specify many different scenarios without a lot of
+code repetition.
+
+## A complete pharmacometrics example
+
+For this example we will use the following packages, so load them first:
+
+```{r}
+library(data.table)
+library(mrgsolve)
+library(linpk)
+library(mappings)
+library(ggplot2)
+library(table1)
+library(ttt)
+```
+
+### Defining a base scenario
+
+```{r}
+base_scenario <- scenario(name="Base Scenario",
+
+    parameters = parameters(
+        n  = 1000,
+        th = list(CL=0.0194, V1=4.51, Q=0.0435, V2=2.82, CL_WT=0.46, V1_WT=0.87),
+        om = LTmat(c(0.1, 0.01, 0.1), .names=c("nCL", "nV1"))
+    ),
+
+    population = population(
+        wtcatfn = cut_mapping(c(0, 60, 100, Inf), c("<60 kg", "60 to <100 kg", ">= 100 kg"), right=TRUE),
+        {
+            data.table(ID=1:n, wt=exp(rnorm(n, log(74), 0.2)))[, wtcat := wtcatfn(wt)]
+        }
+    ),
+
+    subject_model = subject_model(
+        {
+            eta <- generateETA(n, omega=om)
+
+            cbind(population, eta)[, `:=`(
+                CL = th$CL * exp(nCL) * (wt/70)^th$CL_WT,
+                V1 = th$V1 * exp(nV1) * (wt/70)^th$V1_WT
+            )]
+        }
+    ),
+
+    treatment = treatment(
+        {
+            population[, .(ID, amt=wt*3, tinf=0.5, addl=5, ii=2*24*7)]
+        }
+    ),
+
+    pkpd_model = pkpd_model(
+        {
+            model.code <- '
+            [param]   CL=1, V1=1, V2=1, Q=1
+            [pkmodel] cmt="CENTRAL PERIPH"
+            [table]   capture conc = CENTRAL/V1;
+            '
+
+            mcode_cache("2cmt", model.code)
+        }
+    ),
+
+    simulation = simulation(
+        {
+            eoi <- realize_addl(as.ev(treatment)) |> as.data.frame() |> with(time + (amt/rate)) |> unique() |> sort()
+
+            sim <- pkpd_model |>
+                param(th) |>
+                idata_set(subject_model) |>
+                ev(as.ev(treatment)) |>
+                Req(conc) |>
+                update(end=12*24*7, delta=24, add=eoi) |>
+                mrgsim()
+
+            simdat <- sim |> as.data.frame() |> as.data.table()
+
+            population[simdat, on="ID"]
+        }
+    ),
+
+    endpoints = endpoints(
+        {
+            auc.by.trapezoid <- function(x, y) sum(0.5*diff(x)*(y[-1] + y[-length(y)]))
+
+            simulation[time >= 6*24*7, .(
+                cmin=min(conc),
+                cmax=max(conc),
+                cavg=auc.by.trapezoid(time, conc)/diff(range(time))),
+            by=ID][population, on="ID"]
+        },
+
+        outputs = csv_output(endpoints, name="sim-exposure")
+    ),
+
+    summarization = summarization(
+        {
+            list(
+                overall = simulation[, qi(conc, level=0.9), by=time],
+                bywtcat = simulation[, qi(conc, level=0.9), by=.(time, wtcat=wtcatfn(wt))]
+            )
+        },
+
+        outputs = output_list(
+            graphical_output(name="sim-profile-90pctPI-overall", width=7, height=5, {
+                ggplot(summarization$overall, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                    geom_ribbon(color=NA, fill="blue", alpha=0.1) +
+                    geom_line() +
+                    theme_bw()
+            }),
+            graphical_output(name="sim-profile-90pctPI-bywtcat", width=7, height=5, {
+                ggplot(summarization$bywtcat, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                    facet_wrap(~ wtcat) +
+                    geom_ribbon(color=NA, fill="blue", alpha=0.1) +
+                    geom_line() +
+                    theme_bw()
+            })
+        )
+    )
+)
+```
+
+### Running a scenario
+
+```{r, eval=F}
+CTS(base_scenario)
+```
+
+After the scenario has finished running, you will find that there is a folder
+in the current directory named `cts_results/2023-01-20/Base Scenario`. Within
+that folder you will find a subfolder called `summarization` (the same name as
+the module) that contains these 2 plots:
+
+```{r, eval=T, echo=F, fig.width=7, fig.height=5}
+x <- CTS(base_scenario)
+outputs <- attr(x$scenario$summarization, "outputs")
+outres <- rlang::eval_tidy(outputs, c(x))
+outres[[1]]
+outres[[2]]
+```
+
+### Deriving a new scenario from an existing one
+
+```{r, eval=F}
+scenario_fixed_200mg_q2w <- derive_scenario(base_scenario,
+    treatment = treatment(name="200 mg Q2W", {
+        population[, .(ID, amt=200, tinf=0.5, addl=5, ii=2*24*7)]
+    })
+)
+
+scenario_fixed_300mg_q3w <- derive_scenario(base_scenario,
+    treatment = treatment(name="300 mg Q3W", {
+        population[, .(ID, amt=300, tinf=0.5, addl=3, ii=3*24*7)]
+    })
+)
+
+```
+
+### Creating a scenario list
+
+```{r, eval=F}
+sclist <- scenario_list(base_scenario, scenario_fixed_200mg_q2w, scenario_fixed_300mg_q3w)
+
+CTS(sclist)
+```
+
+
+### Creating a scenario grid
+
+```{r}
+scgrid <- scenario_grid(base_scenario,
+
+    parameters = list(
+        parameters(name="Estimated allometry"),
+        parameters(name="Fixed allometry",
+            th = list(CL=0.0194, V1=4.51, Q=0.0435, V2=2.82, CL_WT=0.75, V1_WT=1.00))
+    ),
+
+    treatment = list(
+        treatment(name="3 mg/kg Q2W", {population[, .(ID, amt=wt*3, tinf=0.5, addl=5, ii=2*24*7)]}),
+        treatment(name="200 mg Q2W",  {population[, .(ID, amt=200,  tinf=0.5, addl=5, ii=2*24*7)]}),
+        treatment(name="300 mg Q3W",  {population[, .(ID, amt=300,  tinf=0.5, addl=3, ii=3*24*7)]})
+    )
+)
+
+CTS(scgrid)
+```
+
+Each scenario will generate the same outputs as the base scenario.
+
+### Putting it all together
+
+While outputs from individual scenarios can be important, at the end of the
+day, the goal is often to produce a few key tables and/or figures that
+summarize and compare a collection of different scenarios. That is the purpose
+of the `collate()` function.
+
+There are 2 ways of doing this:
+
+  1. Using the object returned by the `CTS()` function, which contains multiple
+     scenario results in memory.
+
+  2. Reading in the data that was saved to disc during the execution of each
+     scenario.
+
+
+In this example, we will use the second approach.
+
+```{r}
+dat <- collate("cts_results/2023-01-20", "endpoints/sim-exposure.csv")
+```
+
+Now, we can produce a nice table to summarize our results across all 6 scenarios:
+
+```{r}
+dat <- dat[scenario %in% get_scenario_table(scgrid)$scenario]
+dat2 <- melt(dat, id.vars=c("parameters", "treatment"), measure.vars=c("cmin", "cmax", "cavg"))
+
+m <- text2mapping("
+cmin | C<sub>min,ss</sub> (μg/mL)
+cmax | C<sub>max,ss</sub> (μg/mL)
+cavg | C<sub>avg,ss</sub> (μg/mL)
+")
+dat2$variable <- m(dat2$variable)
+
+dat2$parameters <- cf(dat2$parameters)
+dat2$treatment  <- cf(dat2$treatment)
+
+label(dat2$parameters) <- "Model"
+label(dat2$variable)   <- "Exposure<br/>Metric"
+
+ttt(value ~ parameters + variable | treatment, data=dat2, lab="Regimen<br/>Median [90% PI]",
+    render=function(x) with(stats.apply.rounding(stats.default(x)),
+        sprintf("%s [%s, %s]", MEDIAN, q05, q95)))
+```
+
+## Managing RNG seeds
+
+Because simulations usually involve the generation of random data, storing RNG
+seeds is important for reproducibility. By default, each new scenario gets its
+own unique seed (which can be overridden) that gets stored with the object.
+Individual modules can also have their own seeds, but by default they do not.
+If it were desired to simulate multiple different treatments with the same
+population, for instance, then that could be accomplished be having a common
+RNG seed for the `population` module.
+
+When a scenario or module has its own RNG seed specified, then the current RNG
+state will be saved before running the scenario or module and restored
+afterwards.
+
+## TBD
+
+- uncertainty/repetition
+- caching
+- parallelization
+
