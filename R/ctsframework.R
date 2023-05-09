@@ -38,14 +38,14 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
     context
 }
 
-do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .base.path=file.path("cts_results", timestamp), .save=TRUE) {
+do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=TRUE) {
     if (!is.null(seed <- attr(scenario, "seed"))) {
         save.seed <- .Random.seed
         on.exit({.Random.seed <- save.seed})
         set.seed(seed)
     }
 
-    .scenario.path <- file.path(.base.path, attr(scenario, "name"))
+    .scenario.path <- file.path(.path, attr(scenario, "name"))
     if (.save) {
         dir.create(.scenario.path, showWarnings=FALSE, recursive=TRUE)
         #saveRDS(scenario, file=file.path(.scenario.path, "scenario.rds"))
@@ -55,7 +55,7 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .base.pat
         write_code(scenario, con=con)
     }
 
-    file <- file.path(.base.path, "scenarios.csv")
+    file <- file.path(.path, "scenarios.csv")
     append <- file.exists(file) && file.size(file) > 0
     write.table(file=file, col.names=!append, row.names=FALSE, na="", sep=",", append=append,
         data.frame(
@@ -73,9 +73,7 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .base.pat
         )
     )
  
-    x <- list()
-
-    x$scenario <- scenario
+    x <- scenario
 
     f <- function(y) cts_eval(y, x, scenario, .scenario.path=.scenario.path)
 
@@ -88,7 +86,9 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .base.pat
     x <- f(scenario$endpoints)
     x <- f(scenario$summarization)
 
-    invisible(structure(x, class="cts_scenario_evaluated", name=get_name(scenario), desc=get_desc(scenario)))
+    x$scenario <- scenario
+
+    invisible(structure(x, class="cts_scenario_evaluated", timestamp=Sys.time()))
 }
 
 
@@ -100,24 +100,28 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .base.pat
 CTS <- function(x, ...) UseMethod("CTS")
 
 #' @export
-CTS.cts_scenario <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp)) {
-    do_sim(x, timestamp=timestamp, .base.path=.path)
+CTS.cts_scenario <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=FALSE) {
+    res <- do_sim(x, timestamp=timestamp, .path=.path, .save=.save)
     fixup_scenario_table(.path=.path)
+    invisible(res)
 }
 
 #' @export
-CTS.cts_scenario_list <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp)) {
-    invisible(lapply(x, do_sim, timestamp=timestamp, .base.path=.path))
+CTS.cts_scenario_list <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=FALSE) {
+    res <- lapply(x, do_sim, timestamp=timestamp, .path=.path, .save=.save)
     fixup_scenario_table(.path=.path)
+    names(res) <- sapply(res, get_name)
+    class(res) <- "cts_scenario_evaluated_list" 
+    invisible(res)
 }
 
 fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
-
-    x <- fread(file.path(.path, scenario_table))
+    x <- fread(file.path(.path, scenario_table), fill=T)
     x <- x[rev(!duplicated(rev(scenario)))]
     x <- x[scenario %in% dir(.path)]
+    keep <- sapply(x, function(xx) !all(is.na(xx)))
+    x <- x[, keep, with=F]
     fwrite(x, file.path(.path, scenario_table))
-
 }
 
 
@@ -143,10 +147,9 @@ collate <- function(x, path, ..., outputs=NULL) UseMethod("collate")
 
 
 #' @export
-collate.scenario_list <- function(x, path, scenario_table=get_scenario_table(x), ..., outputs=NULL) {
-    names(x) <- sapply(x, get_name)
+collate.cts_scenario_evaluated_list <- function(x, path, scenario_table=get_scenario_table(x), ..., outputs=NULL) {
     dat <- data.table(
-        scenario=names(x)
+        scenario = sapply(x, get_name)
     )[, getElement(x[[scenario]], name=path), by=scenario]
     dat <- setDT(scenario_table)[dat, on="scenario"]
 
@@ -156,18 +159,26 @@ collate.scenario_list <- function(x, path, scenario_table=get_scenario_table(x),
             cts_save(outres, .path=x)
         }
     }
-    invisible(dat)
+    dat
 }
 
 
 #' @import data.table
 #' @export
-collate.character <- function(x, path, scenario_table="scenarios.csv", .fun=fread, ..., outputs=NULL) {
+collate.character <- function(x, path, scenario_table="scenarios.csv", ..., outputs=NULL) {
 
     scenario_table <- fread(file.path(x, scenario_table))
     scenario_table <- scenario_table[rev(!duplicated(rev(scenario)))]
 
-    dat <- scenario_table[, .fun(file.path(x, scenario, path)), by=scenario]
+    scenario_files <- scenario_table[, .(file=file.path(x, scenario, path)), by=scenario]
+
+    f <- function(file, scenario) {
+        dat <- fread(file)
+        data.table(scenario, dat)
+    }
+    dat <- mapply(f, scenario_files$file, scenario_files$scenario, SIMPLIFY=F)
+    dat <- rbindlist(dat, fill=T)
+
     dat <- scenario_table[dat, on="scenario"]
 
     if (!is.null(outputs)) {
@@ -176,7 +187,7 @@ collate.character <- function(x, path, scenario_table="scenarios.csv", .fun=frea
             cts_save(outres, .path=x)
         }
     }
-    invisible(dat)
+    dat
 }
 
 
@@ -200,9 +211,10 @@ get_seed <- function(x) {
 
 #' @export
 get_scenario_table <- function(scenario_list) {
-    do.call(rbind, lapply(scenario_list, function(scenario) {
+    x <- do.call(rbind, lapply(scenario_list, function(scenario) {
         data.frame(
             scenario      = get_name(scenario               ) %||% NA,
+            seed          = get_seed(scenario               ) %||% NA,
             parameters    = get_name(scenario$parameters    ) %||% NA,
             population    = get_name(scenario$population    ) %||% NA,
             subject_model = get_name(scenario$subject_model ) %||% NA,
@@ -213,6 +225,9 @@ get_scenario_table <- function(scenario_list) {
             summarization = get_name(scenario$summarization ) %||% NA
         )
     }))
+
+    keep <- sapply(x, function(xx) !all(is.na(xx)))
+    x[, keep, drop=F]
 }
 
 
@@ -476,9 +491,9 @@ derive_scenario <- function(
     seed=NULL
 ) {
 
-    if (is.null(seed) && !is.null(attr(base_scenario, "seed"))) {
-        warning("The derived scenario has the same random seed as the base scenario.")
-    }
+    #if (is.null(seed) && !is.null(attr(base_scenario, "seed"))) {
+    #    warning("The derived scenario has the same random seed as the base scenario.")
+    #}
 
     x <- scenario(
         parameters    = merge_lists(parameters    , base_scenario$parameters),

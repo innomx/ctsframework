@@ -3,7 +3,7 @@
 S3method(CTS,cts_scenario)
 S3method(CTS,cts_scenario_list)
 S3method(collate,character)
-S3method(collate,scenario_list)
+S3method(collate,cts_scenario_evaluated_list)
 S3method(cts_save,cts_csv_output)
 S3method(cts_save,cts_graphical_output)
 S3method(cts_save,cts_output_list)
