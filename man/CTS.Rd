@@ -9,7 +9,7 @@ CTS(x, ...)
 \arguments{
 \item{x}{An object (e.g. a \link{scenario} or \link{scenario_list}).}
 
-\item{...}{Further arguments, ignored.}
+\item{...}{Further arguments (which are currently ignored).}
 }
 \description{
 Perform a clinical trial simulation

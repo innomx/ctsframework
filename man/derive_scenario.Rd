@@ -15,7 +15,7 @@ derive_scenario(
   endpoints = NULL,
   summarization = NULL,
   ...,
-  name = NULL,
+  name,
   desc = NULL,
   seed = NULL
 )

@@ -4,6 +4,7 @@
 #
 #********************************************************************************
 
+# @internal
 cts_eval <- function(module, context, scenario, .scenario.path) {
     if (!is.null(seed <- attr(module, "seed"))) {
         save.seed <- .Random.seed
@@ -38,6 +39,7 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
     context
 }
 
+# @internal
 do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=TRUE) {
     if (!is.null(seed <- attr(scenario, "seed"))) {
         save.seed <- .Random.seed
@@ -95,7 +97,7 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=fil
 #' Perform a clinical trial simulation
 #'
 #' @param x An object (e.g. a [scenario] or [scenario_list]).
-#' @param ... Further arguments, ignored.
+#' @param ... Further arguments (which are currently ignored).
 #' @export
 CTS <- function(x, ...) UseMethod("CTS")
 
@@ -115,16 +117,24 @@ CTS.cts_scenario_list <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .
     invisible(res)
 }
 
+# @internal
 fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
     x <- fread(file.path(.path, scenario_table), fill=T)
     x <- x[rev(!duplicated(rev(scenario)))]
     x <- x[scenario %in% dir(.path)]
     keep <- sapply(x, function(xx) !all(is.na(xx)))
     x <- x[, keep, with=F]
-    fwrite(x, file.path(.path, scenario_table))
+    dir.create(.path, showWarnings=FALSE, recursive=TRUE)
+    data.table::fwrite(x, file.path(.path, scenario_table))
 }
 
 
+#' Scenario replication
+#'  
+#' @param scenario The [scenario] to replicate.
+#' @param nreplicatesd The number of times to replicate the scenario.
+#' @param seed The initial RNG seed to use.
+#' @param collate Collate the replication results.
 #' @export
 replication <- function(scenario, nreplicates, seed=NULL, collate=NULL) {
 
@@ -136,12 +146,17 @@ replication <- function(scenario, nreplicates, seed=NULL, collate=NULL) {
     as_scenario_list(replicate(nreplicates, scenario, simplify=FALSE), seed=seed, collate=collate)
 }
 
+#' Add parameter uncertainty to a scenario
+#'
+#' @param scenario The [scenario] to add parameter uncertainty to.
 #' @export
 parameter_uncertainty <- function(scenario, ...) {
     stop("to be implemented")
 }
 
 
+#' Collate simulation results from multiple scenarios
+#'
 #' @export
 collate <- function(x, path, ..., outputs=NULL) UseMethod("collate")
 
@@ -167,17 +182,17 @@ collate.cts_scenario_evaluated_list <- function(x, path, scenario_table=get_scen
 #' @export
 collate.character <- function(x, path, scenario_table="scenarios.csv", ..., outputs=NULL) {
 
-    scenario_table <- fread(file.path(x, scenario_table))
+    scenario_table <- data.table::fread(file.path(x, scenario_table))
     scenario_table <- scenario_table[rev(!duplicated(rev(scenario)))]
 
     scenario_files <- scenario_table[, .(file=file.path(x, scenario, path)), by=scenario]
 
     f <- function(file, scenario) {
-        dat <- fread(file)
+        dat <- data.table::fread(file)
         data.table(scenario, dat)
     }
     dat <- mapply(f, scenario_files$file, scenario_files$scenario, SIMPLIFY=F)
-    dat <- rbindlist(dat, fill=T)
+    dat <- data.table::rbindlist(dat, fill=T)
 
     dat <- scenario_table[dat, on="scenario"]
 
@@ -209,25 +224,26 @@ get_seed <- function(x) {
 }
 
 
+#' Get the scenario table for a list of scenarios
+#'
+#' @param scenario_list The [scenario_list] for which to get the table.
+#' @return A `data.frame`.
 #' @export
 get_scenario_table <- function(scenario_list) {
-    x <- do.call(rbind, lapply(scenario_list, function(scenario) {
+    data.table::rbindlist(fill=T, lapply(scenario_list, function(scenario) {
         data.frame(
-            scenario      = get_name(scenario               ) %||% NA,
-            seed          = get_seed(scenario               ) %||% NA,
-            parameters    = get_name(scenario$parameters    ) %||% NA,
-            population    = get_name(scenario$population    ) %||% NA,
-            subject_model = get_name(scenario$subject_model ) %||% NA,
-            treatment     = get_name(scenario$treatment     ) %||% NA,
-            pkpd_model    = get_name(scenario$pkpd_model    ) %||% NA,
-            simulation    = get_name(scenario$simulation    ) %||% NA,
-            endpoints     = get_name(scenario$endpoints     ) %||% NA,
-            summarization = get_name(scenario$summarization ) %||% NA
+            scenario      = get_name(scenario               ),
+            seed          = get_seed(scenario               ),
+            parameters    = get_name(scenario$parameters    ),
+            population    = get_name(scenario$population    ),
+            subject_model = get_name(scenario$subject_model ),
+            treatment     = get_name(scenario$treatment     ),
+            pkpd_model    = get_name(scenario$pkpd_model    ),
+            simulation    = get_name(scenario$simulation    ),
+            endpoints     = get_name(scenario$endpoints     ),
+            summarization = get_name(scenario$summarization )
         )
-    }))
-
-    keep <- sapply(x, function(xx) !all(is.na(xx)))
-    x[, keep, drop=F]
+    })) |> as.data.frame()
 }
 
 
@@ -256,11 +272,12 @@ get_scenario_table <- function(scenario_list) {
 NULL
 
 
-# Internal
+# @internal
 make_cts_module <- function(module) {
     function(..., outputs=NULL, name=NULL, desc=NULL, seed=NULL, collate=NULL) {
         code    <- rlang::enquos(...)
         outputs <- rlang::enquo(outputs)
+        name    <- module_eval_name(rlang::enquo(name), ...)
         if (rlang::quo_is_null(outputs)) outputs <- NULL
         counter <- next_counter(module)
         #if (is.null(name)) name <- paste0(module, counter)
@@ -269,6 +286,16 @@ make_cts_module <- function(module) {
     }
 }
 
+# @internal
+module_eval_name <- function(name, ...) {
+    x <- rlang::enquos(...)
+    v <- intersect(names(x), all.vars(name))
+    context <- list()
+    for (w in v) {
+        context[[w]] <- rlang::eval_tidy(x[[w]], context)
+    }
+    rlang::eval_tidy(name, context) |> as.character()
+}
 
 
 #' @rdname cts_module
@@ -342,6 +369,7 @@ summarization_ <- function(scenario, ...) update(scenario, summarization=summari
 
 
 
+# @internal
 make_cts_module_grid <- function(module) {
     function(...) {
         f <- function(y) {
@@ -441,6 +469,20 @@ scenario <- function(
     .silent=FALSE
 ) {
 
+    name_quo <- rlang::enquo(name)
+    name <- rlang::eval_tidy(name_quo,
+        list(
+            parameters    = get_name(parameters    ),
+            population    = get_name(population    ),
+            subject_model = get_name(subject_model ),
+            treatment     = get_name(treatment     ),
+            pkpd_model    = get_name(pkpd_model    ),
+            simulation    = get_name(simulation    ),
+            endpoints     = get_name(endpoints     ),
+            summarization = get_name(summarization )
+        )
+    ) |> as.character()
+
     if (is.null(name)) {
         name <- paste0("Scenario", next_counter("cts.scenario.counter"))
     }
@@ -459,7 +501,7 @@ scenario <- function(
             simulation    = simulation,
             endpoints     = endpoints,
             summarization = summarization
-        ), class="cts_scenario", name=name, desc=desc, seed=seed)
+        ), class="cts_scenario", name_quo=name_quo, name=name, desc=desc, seed=seed)
 }
 
 
@@ -486,7 +528,7 @@ derive_scenario <- function(
     endpoints     = NULL,
     summarization = NULL,
     ...,
-    name=NULL,
+    name,
     desc=NULL,
     seed=NULL
 ) {
@@ -495,31 +537,26 @@ derive_scenario <- function(
     #    warning("The derived scenario has the same random seed as the base scenario.")
     #}
 
+    if (missing(name)) {
+        name <- attr(base_scenario, "name_quo")
+    } else {
+        name <- rlang::enquo(name)
+    }
+
     x <- scenario(
-        parameters    = merge_lists(parameters    , base_scenario$parameters),
-        population    = merge_lists(population    , base_scenario$population),
-        subject_model = merge_lists(subject_model , base_scenario$subject_model),
-        treatment     = merge_lists(treatment     , base_scenario$treatment),
-        pkpd_model    = merge_lists(pkpd_model    , base_scenario$pkpd_model),
-        simulation    = merge_lists(simulation    , base_scenario$simulation),
-        endpoints     = merge_lists(endpoints     , base_scenario$endpoints),
-        summarization = merge_lists(summarization , base_scenario$summarization),
+        parameters    = merge_modules(parameters    , base_scenario$parameters),
+        population    = merge_modules(population    , base_scenario$population),
+        subject_model = merge_modules(subject_model , base_scenario$subject_model),
+        treatment     = merge_modules(treatment     , base_scenario$treatment),
+        pkpd_model    = merge_modules(pkpd_model    , base_scenario$pkpd_model),
+        simulation    = merge_modules(simulation    , base_scenario$simulation),
+        endpoints     = merge_modules(endpoints     , base_scenario$endpoints),
+        summarization = merge_modules(summarization , base_scenario$summarization),
         ...,
-        name=name,
+        name=!!name,
         desc=desc,
         seed=seed %||% attr(base_scenario, "seed")
     )
-
-    for (a in c("name", "desc", "seed")) {
-        attr(x$parameters    , a) <- attr(parameters    , a, exact=TRUE) %||% attr(base_scenario$parameters    , a, exact=TRUE)
-        attr(x$population    , a) <- attr(population    , a, exact=TRUE) %||% attr(base_scenario$population    , a, exact=TRUE)
-        attr(x$subject_model , a) <- attr(subject_model , a, exact=TRUE) %||% attr(base_scenario$subject_model , a, exact=TRUE)
-        attr(x$treatment     , a) <- attr(treatment     , a, exact=TRUE) %||% attr(base_scenario$treatment     , a, exact=TRUE)
-        attr(x$pkpd_model    , a) <- attr(pkpd_model    , a, exact=TRUE) %||% attr(base_scenario$pkpd_model    , a, exact=TRUE)
-        attr(x$simulation    , a) <- attr(simulation    , a, exact=TRUE) %||% attr(base_scenario$simulation    , a, exact=TRUE)
-        attr(x$endpoints     , a) <- attr(endpoints     , a, exact=TRUE) %||% attr(base_scenario$endpoints     , a, exact=TRUE)
-        attr(x$summarization , a) <- attr(summarization , a, exact=TRUE) %||% attr(base_scenario$summarization , a, exact=TRUE)
-    }
 
     x
 }
@@ -554,6 +591,7 @@ scenario_list <- function(..., collate=NULL) {
     structure(list(...), class=c("cts_scenario_list"), collate=collate)
 }
 
+# @internal
 as_scenario_list <- function(x, ...) {
     do.call(scenario_list, c(x, list(...)))
     #structure(x, class=c("cts_scenario_list"), ...)
@@ -772,6 +810,14 @@ cts_save.cts_rds_output <- function(x, ..., .path) {
 `%@%<-` <- rlang::`%@%<-`
 
 merge_lists <- function(a, b) { b[names(a)] <- a ; b }
+
+merge_modules <- function(a, b) { 
+    m <- merge_lists(a, b)
+    for (x in c("name", "desc", "seed")) {
+        attr(m, x) <- attr(a, x, exact=TRUE) %||% attr(b, x, exact=TRUE)
+    }
+    m
+}
 
 make_seed <- function() {
     round(1e8 * runif(1))
