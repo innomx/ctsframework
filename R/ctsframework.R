@@ -57,10 +57,11 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=fil
         write_code(scenario, con=con)
     }
 
+    dir.create(.path, showWarnings=FALSE, recursive=TRUE)
     file <- file.path(.path, "scenarios.csv")
     append <- file.exists(file) && file.size(file) > 0
     write.table(file=file, col.names=!append, row.names=FALSE, na="", sep=",", append=append,
-        data.frame(
+        data.table(
             timestamp     = Sys.time(),
             scenario      = get_name(scenario)               %||% NA,
             seed          = get_seed(scenario)               %||% NA,
@@ -119,13 +120,20 @@ CTS.cts_scenario_list <- function(x, timestamp=format(Sys.time(), "%Y-%m-%d"), .
 
 # @internal
 fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
-    x <- fread(file.path(.path, scenario_table), fill=T)
-    x <- x[rev(!duplicated(rev(scenario)))]
-    x <- x[scenario %in% dir(.path)]
-    keep <- sapply(x, function(xx) !all(is.na(xx)))
-    x <- x[, keep, with=F]
-    dir.create(.path, showWarnings=FALSE, recursive=TRUE)
-    data.table::fwrite(x, file.path(.path, scenario_table))
+    if (file.exists(file.path(.path, scenario_table))) {
+        x <- fread(file.path(.path, scenario_table), fill=T)
+        x <- x[rev(!duplicated(rev(scenario)))]
+        x <- x[scenario %in% dir(.path)]
+        keep <- sapply(x, function(xx) !all(is.na(xx)))
+        x <- x[, keep, with=F]
+        if (nrow(x)==0 || ncol(x)==0) {
+            file.remove(file.path(.path, scenario_table))
+        } else {
+            suppressWarnings(
+                data.table::fwrite(x, file.path(.path, scenario_table))
+            )
+        }
+    }
 }
 
 
@@ -231,7 +239,7 @@ get_seed <- function(x) {
 #' @export
 get_scenario_table <- function(scenario_list) {
     data.table::rbindlist(fill=T, lapply(scenario_list, function(scenario) {
-        data.frame(
+        data.table(
             scenario      = get_name(scenario               ),
             seed          = get_seed(scenario               ),
             parameters    = get_name(scenario$parameters    ),
@@ -274,27 +282,32 @@ NULL
 
 # @internal
 make_cts_module <- function(module) {
-    function(..., outputs=NULL, name=NULL, desc=NULL, seed=NULL, collate=NULL) {
+    function(..., outputs=NULL, name=NULL, dynamic_name=NULL, desc=NULL, seed=NULL, collate=NULL) {
         code    <- rlang::enquos(...)
         outputs <- rlang::enquo(outputs)
-        name    <- module_eval_name(rlang::enquo(name), ...)
+        dynamic_name    <- rlang::enquo(dynamic_name)
+        name    <- module_eval_name(dynamic_name=!!dynamic_name, code)
         if (rlang::quo_is_null(outputs)) outputs <- NULL
-        counter <- next_counter(module)
+        counter <- next_counter(paste0("cts.", module))
         #if (is.null(name)) name <- paste0(module, counter)
         #if (is.null(name)) name <- ""
-        structure(code, class=c(paste0("cts_", module), "cts_module"), module=module, counter=counter, outputs=outputs, name=name, desc=desc, seed=seed, collate=collate)
+        structure(code, class=c(paste0("cts_", module), "cts_module"), module=module, counter=counter, outputs=outputs, name=name, dynamic_name=dynamic_name, desc=desc, seed=seed, collate=collate)
     }
 }
 
 # @internal
-module_eval_name <- function(name, ...) {
-    x <- rlang::enquos(...)
-    v <- intersect(names(x), all.vars(name))
+module_eval_name <- function(dynamic_name, x) {
+    dynamic_name <- rlang::enquo(dynamic_name)
+    v    <- intersect(names(x), all.vars(dynamic_name))
     context <- list()
     for (w in v) {
         context[[w]] <- rlang::eval_tidy(x[[w]], context)
     }
-    rlang::eval_tidy(name, context) |> as.character()
+    name <- rlang::eval_tidy(dynamic_name, context)
+    if (!is.null(name)) {
+        name <- as.character(name)
+    }
+    name
 }
 
 
@@ -464,27 +477,31 @@ scenario <- function(
     summarization = NULL,
     ...,
     name=NULL,
+    dynamic_name=NULL,
     desc=NULL,
     seed=make_seed(),
     .silent=FALSE
 ) {
 
-    name_quo <- rlang::enquo(name)
-    name <- rlang::eval_tidy(name_quo,
-        list(
-            parameters    = get_name(parameters    ),
-            population    = get_name(population    ),
-            subject_model = get_name(subject_model ),
-            treatment     = get_name(treatment     ),
-            pkpd_model    = get_name(pkpd_model    ),
-            simulation    = get_name(simulation    ),
-            endpoints     = get_name(endpoints     ),
-            summarization = get_name(summarization )
-        )
-    ) |> as.character()
+    dynamic_name <- rlang::enquo(dynamic_name)
 
     if (is.null(name)) {
-        name <- paste0("Scenario", next_counter("cts.scenario.counter"))
+        if (!rlang::quo_is_null(dynamic_name)) {
+            name <- rlang::eval_tidy(dynamic_name,
+                list(
+                    parameters    = get_name(parameters    ),
+                    population    = get_name(population    ),
+                    subject_model = get_name(subject_model ),
+                    treatment     = get_name(treatment     ),
+                    pkpd_model    = get_name(pkpd_model    ),
+                    simulation    = get_name(simulation    ),
+                    endpoints     = get_name(endpoints     ),
+                    summarization = get_name(summarization )
+                )
+            ) |> as.character()
+        } else {
+            name <- paste0("Scenario", next_counter("cts.scenario"))
+        }
     }
 
     if (!isTRUE(.silent)) {
@@ -501,7 +518,7 @@ scenario <- function(
             simulation    = simulation,
             endpoints     = endpoints,
             summarization = summarization
-        ), class="cts_scenario", name_quo=name_quo, name=name, desc=desc, seed=seed)
+        ), class="cts_scenario", dynamic_name=dynamic_name, name=name, desc=desc, seed=seed)
 }
 
 
@@ -528,20 +545,21 @@ derive_scenario <- function(
     endpoints     = NULL,
     summarization = NULL,
     ...,
-    name,
+    name = NULL,
+    dynamic_name,
     desc=NULL,
     seed=NULL
 ) {
 
+    if (missing(dynamic_name)) {
+        dynamic_name <- attr(base_scenario, "dynamic_name")
+    } else {
+        dynamic_name <- rlang::enquo(dynamic_name)
+    }
+
     #if (is.null(seed) && !is.null(attr(base_scenario, "seed"))) {
     #    warning("The derived scenario has the same random seed as the base scenario.")
     #}
-
-    if (missing(name)) {
-        name <- attr(base_scenario, "name_quo")
-    } else {
-        name <- rlang::enquo(name)
-    }
 
     x <- scenario(
         parameters    = merge_modules(parameters    , base_scenario$parameters),
@@ -553,7 +571,8 @@ derive_scenario <- function(
         endpoints     = merge_modules(endpoints     , base_scenario$endpoints),
         summarization = merge_modules(summarization , base_scenario$summarization),
         ...,
-        name=!!name,
+        name=name,
+        dynamic_name=!!dynamic_name,
         desc=desc,
         seed=seed %||% attr(base_scenario, "seed")
     )
@@ -617,8 +636,15 @@ scenario_grid <- function(
     simulation    = NULL,
     endpoints     = NULL,
     summarization = NULL,
-    ...
+    ...,
+    dynamic_name
 ) {
+
+    if (missing(dynamic_name)) {
+        dynamic_name <- attr(base_scenario, "dynamic_name")
+    } else {
+        dynamic_name <- rlang::enquo(dynamic_name)
+    }
 
     f <- function(y) {
         #c(0, seq_along(y))
@@ -642,7 +668,7 @@ scenario_grid <- function(
     sclist <- lapply(split(grid, 1:nrow(grid)), function(grid.i) {
         a <- lapply(seq_along(grid.i)[grid.i > 0], function(j) args[[j]][[grid.i[[j]]]])
         names(a) <- names(args)[grid.i > 0]
-        do.call(derive_scenario, c(list(base_scenario), a))
+        do.call(derive_scenario, c(list(base_scenario=base_scenario), a))
     })
 
     #do.call(scenario_list, c(sclist, list(...)))
@@ -815,6 +841,14 @@ merge_modules <- function(a, b) {
     m <- merge_lists(a, b)
     for (x in c("name", "desc", "seed")) {
         attr(m, x) <- attr(a, x, exact=TRUE) %||% attr(b, x, exact=TRUE)
+    }
+    dynamic_name <- attr(a, "dynamic_name", exact=TRUE)
+    if (is.null(dynamic_name) || rlang::quo_is_null(dynamic_name)) {
+        dynamic_name <- attr(b, "dynamic_name", exact=TRUE)
+    }
+    attr(m, "dynamic_name") <- dynamic_name
+    if (!is.null(dynamic_name)) {
+        attr(m, "name") <- do.call(module_eval_name, c(list(dynamic_name=dynamic_name), list(x=m)))
     }
     m
 }
