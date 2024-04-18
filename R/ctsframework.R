@@ -835,7 +835,33 @@ cts_save.cts_rds_output <- function(x, ..., .path) {
 `%@%`   <- rlang::`%@%`
 `%@%<-` <- rlang::`%@%<-`
 
-merge_lists <- function(a, b) { b[names(a)] <- a ; b }
+merge_lists <- function(a, b) {
+
+    # Extend the sequence x with m+1, m+2, ... so that it's length equals n
+    ext_seq <- function(x, n, m) {
+        lx <- length(x)
+        if (n <= lx) {
+            x[seq_len(n)]
+        } else {
+            c(x, 1 + seq.int(m, length.out=(n-lx)))
+        }
+    }
+
+    nma <- names(a) %||% rep("", length(a))
+    nmb <- names(b) %||% rep("", length(b))
+
+    # Merge by position
+    ia <- which(nma == "")
+    ib <- which(nmb == "")
+    ib <- ext_seq(ib, length(ia), length(b))
+    b[ib] <- a[ia]
+
+    # Merge by name
+    nm <- setdiff(nma, "")
+    b[nm] <- a[nm]
+
+    b
+}
 
 merge_modules <- function(a, b) { 
     m <- merge_lists(a, b)
