@@ -15,8 +15,7 @@ derive_scenario(
   endpoints = NULL,
   summarization = NULL,
   ...,
-  name,
-  desc = NULL,
+  name = NULL,
   seed = NULL
 )
 }
@@ -42,8 +41,6 @@ derive_scenario(
 \item{...}{Further argument passed to \code{\link[=scenario]{scenario()}}.}
 
 \item{name}{Optional scenario name.}
-
-\item{desc}{Optional scenario description.}
 
 \item{seed}{RNG seed, for reproducibility.}
 }

@@ -12,7 +12,17 @@ knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, error=FALSE)
 ```
 
 ```{r, echo=FALSE}
-devtools::load_all()
+#devtools::load_all()
+library(ctsframework)
+
+# Reset all counters
+reset_counter(.all=TRUE)
+
+# Create a temporary directory to hold the results
+today <- format(Sys.time(), "%Y-%m-%d") 
+cts_results_path <- tempfile()
+dir.create(cts_results_path, FALSE, TRUE)
+owd <- setwd(cts_results_path)
 ```
 
 
@@ -92,6 +102,13 @@ library(ggplot2)
 library(table1)
 library(ttt)
 ```
+
+Also, for reproducibility we better set the RNG seed:
+
+```{r}
+set.seed(2755139)
+```
+
 
 ### Defining a base scenario
 
@@ -234,7 +251,6 @@ scenario_fixed_300mg_q3w <- derive_scenario(base_scenario,
         population[, .(ID, amt=300, tinf=0.5, addl=3, ii=3*24*7)]
     })
 )
-
 ```
 
 ### Creating a scenario list
@@ -267,7 +283,8 @@ scgrid <- scenario_grid(base_scenario,
 CTS(scgrid)
 ```
 
-Each scenario will generate the same outputs as the base scenario.
+Each scenario will generate the same outputs as the base scenario, using the
+specified parameters and treatment regimens.
 
 ### Putting it all together
 
@@ -288,13 +305,13 @@ There are 2 ways of doing this:
 In this example, we will use the second approach.
 
 ```{r}
-dat <- collate("cts_results/2023-01-20", "endpoints/sim-exposure.csv")
+dat <- collate("endpoints/sim-exposure.csv")
 ```
 
 Now, we can produce a nice table to summarize our results across all 6 scenarios:
 
 ```{r}
-dat <- dat[scenario %in% get_scenario_table(scgrid)$scenario]
+dat <- dat[scenario %in% names(scgrid)]
 dat2 <- melt(dat, id.vars=c("parameters", "treatment"), measure.vars=c("cmin", "cmax", "cavg"))
 
 m <- text2mapping("
@@ -334,4 +351,10 @@ afterwards.
 - uncertainty/repetition
 - caching
 - parallelization
+
+```{r, echo=FALSE}
+# Cleanup
+setwd(owd)
+unlink(cts_results_path, recursive=T)
+```
 

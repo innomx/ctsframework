@@ -28,6 +28,9 @@ endpoints_grid(...)
 
 summarization_grid(...)
 }
+\arguments{
+\item{...}{A list of modeles to include.}
+}
 \description{
 CTS module grid
 }

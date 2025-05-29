@@ -28,6 +28,14 @@ endpoints_(scenario, ...)
 
 summarization_(scenario, ...)
 }
+\arguments{
+\item{scenario}{A \link{scenario}.}
+
+\item{...}{A named list of expressions.}
+}
+\value{
+A module object.
+}
 \description{
 CTS module (pipe interface)
 }

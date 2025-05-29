@@ -8,6 +8,8 @@ parameter_uncertainty(scenario, ...)
 }
 \arguments{
 \item{scenario}{The \link{scenario} to add parameter uncertainty to.}
+
+\item{...}{Additional arguments (ignored).}
 }
 \description{
 Add parameter uncertainty to a scenario

@@ -15,7 +15,6 @@ scenario(
   summarization = NULL,
   ...,
   name = NULL,
-  desc = NULL,
   seed = make_seed(),
   .silent = FALSE
 )
@@ -40,8 +39,6 @@ scenario(
 \item{...}{Additional arguments, ignored.}
 
 \item{name}{Optional scenario name.}
-
-\item{desc}{Optional scenario description.}
 
 \item{seed}{RNG seed, for reproducibility.}
 

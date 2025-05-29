@@ -12,84 +12,26 @@
 \alias{summarization}
 \title{CTS modules}
 \usage{
-parameters(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+parameters(..., outputs = NULL, seed = NULL)
 
-population(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+population(..., outputs = NULL, seed = NULL)
 
-subject_model(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+subject_model(..., outputs = NULL, seed = NULL)
 
-treatment(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+treatment(..., outputs = NULL, seed = NULL)
 
-pkpd_model(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+pkpd_model(..., outputs = NULL, seed = NULL)
 
-simulation(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+simulation(..., outputs = NULL, seed = NULL)
 
-endpoints(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+endpoints(..., outputs = NULL, seed = NULL)
 
-summarization(
-  ...,
-  outputs = NULL,
-  name = NULL,
-  desc = NULL,
-  seed = NULL,
-  collate = NULL
-)
+summarization(..., outputs = NULL, seed = NULL)
 }
 \arguments{
 \item{...}{A named list of expressions.}
 
 \item{outputs}{(optional) A \link{cts_output} or \link{cts_output_list}.}
-
-\item{name}{Modules can be given a name.}
 
 \item{seed}{Modules can be given a RNG seed, for reproducibility.}
 }

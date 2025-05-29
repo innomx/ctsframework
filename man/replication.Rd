@@ -9,11 +9,11 @@ replication(scenario, nreplicates, seed = NULL, collate = NULL)
 \arguments{
 \item{scenario}{The \link{scenario} to replicate.}
 
+\item{nreplicates}{The number of times to replicate the scenario.}
+
 \item{seed}{The initial RNG seed to use.}
 
 \item{collate}{Collate the replication results.}
-
-\item{nreplicatesd}{The number of times to replicate the scenario.}
 }
 \description{
 Scenario replication

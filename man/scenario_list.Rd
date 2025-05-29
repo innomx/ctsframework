@@ -8,6 +8,8 @@ scenario_list(..., collate = NULL)
 }
 \arguments{
 \item{...}{Any number of \link{scenario}s.}
+
+\item{collate}{How to collate the results.}
 }
 \description{
 Multiples scenarios are combined into a list that can be run as a unit.

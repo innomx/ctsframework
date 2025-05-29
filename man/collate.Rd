@@ -4,7 +4,17 @@
 \alias{collate}
 \title{Collate simulation results from multiple scenarios}
 \usage{
-collate(x, path, ..., outputs = NULL)
+collate(x, ..., outputs = NULL)
+}
+\arguments{
+\item{x}{An object.}
+
+\item{...}{Additional arguments (ignored).}
+
+\item{outputs}{(optional) A \link{cts_output} or \link{cts_output_list}.}
+}
+\value{
+A \code{data.frame}
 }
 \description{
 Collate simulation results from multiple scenarios
