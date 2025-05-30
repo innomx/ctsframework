@@ -40,11 +40,36 @@ derive_scenario(
 
 \item{...}{Further argument passed to \code{\link[=scenario]{scenario()}}.}
 
-\item{name}{Optional scenario name.}
+\item{name}{Optional scenario name. If omitted, a default name will be
+generated such as \code{ScenarioX} where \code{X} is a number that is incremented for
+each new scneario created.}
 
 \item{seed}{RNG seed, for reproducibility.}
+}
+\value{
+A \code{cts_scenario} object.
 }
 \description{
 A new scenario can be derived from an existing one by overriding any of its
 modules, or specific components of its modules.
+}
+\note{
+By default, the derived scenario has the same RNG seed as the base
+scenario. This can be changed by specifying the \code{seed} argument.
+}
+\examples{
+# A silly example that does nothing. For realistic examples, see the vignette.
+
+# Create a base scenario in which x=1
+base <- scenario(name="base",
+  parameters = parameters(x=1),
+  simulation = simulation({cat("x =", x, "\n")})
+)
+
+# Overwrite the value of x in the derived scenario
+derived <- derive_scenario(base, name="derived", parameters=parameters(x=2))
+
+# Run both scenarios and observed the output
+CTS(base)
+CTS(derived)
 }

@@ -4,13 +4,21 @@
 \alias{scenario_list}
 \title{Create a scenario list}
 \usage{
-scenario_list(..., collate = NULL)
+scenario_list(...)
 }
 \arguments{
-\item{...}{Any number of \link{scenario}s.}
-
-\item{collate}{How to collate the results.}
+\item{...}{Any number of \link{scenario} objects.}
+}
+\value{
+A \code{cts_scenario_list} object.
 }
 \description{
 Multiples scenarios are combined into a list that can be run as a unit.
+}
+\examples{
+# A silly example that does nothing. For realistic examples, see the vignette.
+CTS(scenario_list(
+    scenario(name="foo"),
+    scenario(name="bar")
+))
 }

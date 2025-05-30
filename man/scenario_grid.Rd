@@ -38,7 +38,24 @@ scenario_grid(
 
 \item{...}{Further argument passed to \code{\link[=scenario]{scenario()}}.}
 }
+\value{
+A \code{cts_scenario_list} object.
+}
 \description{
 A scenario grid is like a \link{scenario_list} except that all combinations of
 multiple different factors are generated.
+}
+\examples{
+# A silly example that does nothing. For realistic examples, see the vignette.
+
+# This will create 12 scenarios in total, representing all
+# combinations of x, y and treatment.
+CTS(scenario_grid(
+    scenario(name="base", simulation=simulation({cat(x, y, treatment, "\n")})),
+    parameters=parameters_grid(x=1:2, y=3:5),
+    treatment=list(
+        treatment("A"),
+        treatment("B")
+    )
+))
 }

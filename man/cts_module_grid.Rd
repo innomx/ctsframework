@@ -29,8 +29,15 @@ endpoints_grid(...)
 summarization_grid(...)
 }
 \arguments{
-\item{...}{A list of modeles to include.}
+\item{...}{Any objects (typically vectors or lists).}
+}
+\value{
+A \code{list} of \link{cts_module} objects.
 }
 \description{
 CTS module grid
+}
+\examples{
+# This will create 5 scenarios, each with a different value for the parameter x:
+scenario_grid(scenario(name="foo"), parameters=parameters_grid(x=1:5))
 }

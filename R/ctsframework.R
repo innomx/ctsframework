@@ -6,7 +6,7 @@
 
 # @internal
 cts_eval <- function(module, context, scenario, .scenario.path) {
-    if (!is.null(seed <- attr(module, "seed"))) {
+    if (!is.null(seed <- get_seed(module))) {
         save.seed <- .Random.seed
         on.exit({.Random.seed <- save.seed})
         set.seed(seed)
@@ -14,17 +14,17 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
 
     if (!is.null(module)) {
 
-        for (i in 1:length(module)) {
+        for (i in seq_along(module)) {
             nm <- names(module)[i]
             if (is.null(nm) || nm == "") {
-                nm <- attr(module, "module")
+                nm <- get_module(module)
             }
             context[[nm]] <- rlang::eval_tidy(module[[i]], context)
         }
     }
 
-    if (!is.null(outputs <- attr(module, "outputs"))) {
-        .module.path <- file.path(.scenario.path, attr(module, "module"))
+    if (!is.null(outputs <- get_outputs(module))) {
+        .module.path <- file.path(.scenario.path, get_module(module))
         dir.create(.module.path, showWarnings=FALSE, recursive=TRUE)
         outcontext <- c(context, list(.module.path=.module.path))
         outres <- rlang::eval_tidy(outputs, outcontext)
@@ -36,17 +36,16 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
 }
 
 # @internal
-do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=TRUE) {
+do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=TRUE) {
 
-    start_time <- Sys.time()
-
-    if (!is.null(seed <- attr(scenario, "seed"))) {
+    if (!is.null(seed <- get_seed(scenario))) {
         save.seed <- .Random.seed
         on.exit({.Random.seed <- save.seed})
         set.seed(seed)
     }
 
-    .scenario.path <- file.path(.path, attr(scenario, "name", exact=TRUE))
+    .scenario.path <- file.path(.path, get_name(scenario))
+
     if (.save) {
         dir.create(.scenario.path, showWarnings=FALSE, recursive=TRUE)
         #saveRDS(scenario, file=file.path(.scenario.path, "scenario.rds"))
@@ -78,46 +77,76 @@ do_sim <- function(scenario, timestamp=format(Sys.time(), "%Y-%m-%d"), .path=fil
 
     x$scenario <- scenario
 
-    dir.create(.path, showWarnings=FALSE, recursive=TRUE)
-    file <- file.path(.path, "scenarios.csv")
-    append <- file.exists(file) && file.size(file) > 0
-    write.table(file=file, col.names=!append, row.names=FALSE, na="", sep=",", append=append,
-        data.table(
-            timestamp     = start_time,
-            scenario      = get_name(scenario)               %||% NA,
-            seed          = get_seed(scenario)               %||% NA,
-            parameters    = get_name(scenario$parameters)    %||% NA,
-            population    = get_name(scenario$population)    %||% NA,
-            subject_model = get_name(scenario$subject_model) %||% NA,
-            treatment     = get_name(scenario$treatment)     %||% NA,
-            pkpd_model    = get_name(scenario$pkpd_model)    %||% NA,
-            simulation    = get_name(scenario$simulation)    %||% NA,
-            endpoints     = get_name(scenario$endpoints)     %||% NA,
-            summarization = get_name(scenario$summarization) %||% NA
+    any_outputs <- !all(sapply(lapply(scenario, get_outputs), is.null))
+
+    if (any_outputs) {
+        dir.create(.path, showWarnings=FALSE, recursive=TRUE)
+        file <- file.path(.path, "scenarios.csv")
+        append <- file.exists(file) && file.size(file) > 0
+        write.table(file=file, col.names=!append, row.names=FALSE, na="", sep=",", append=append,
+            data.table(
+                timestamp     = timestamp,
+                scenario      = get_name(scenario)               %||% NA,
+                seed          = get_seed(scenario)               %||% NA,
+                parameters    = get_name(scenario$parameters)    %||% NA,
+                population    = get_name(scenario$population)    %||% NA,
+                subject_model = get_name(scenario$subject_model) %||% NA,
+                treatment     = get_name(scenario$treatment)     %||% NA,
+                pkpd_model    = get_name(scenario$pkpd_model)    %||% NA,
+                simulation    = get_name(scenario$simulation)    %||% NA,
+                endpoints     = get_name(scenario$endpoints)     %||% NA,
+                summarization = get_name(scenario$summarization) %||% NA
+            )
         )
-    )
+    }
  
 
-    invisible(structure(x, class="cts_scenario_evaluated", timestamp=Sys.time()))
+    invisible(structure(x, class="cts_scenario_evaluated", timestamp=timestamp))
 }
 
 
 #' Perform a clinical trial simulation
 #'
+#' This is the function that will actually run the [scenario] or
+#' [scenario_list].
+#'
 #' @param x An object (e.g. a [scenario] or [scenario_list]).
-#' @param ... Further arguments (which are currently ignored).
+#' @param ... Additional arguments (currently ignored).
+#' @param timestamp This gets used to record when the simulation was run. It is
+#' also used (by default) in the construction of the path containing the
+#' simulation results (the date portion only). This helps to prevent overriting
+#' previous results by accident.
+#' @param .path Path where the simulation results will be saved. Typically, a
+#' folder structure will be created under this directory, with a subdirectory
+#' for each scenario. Within each scenario directory, outputs are saved under a
+#' subdirectory named for the module in which it is created.  Several other
+#' files will be created as well, such as `scenarios.csv` (a record of the
+#' scenarios that have been run in this directory) and a `scenario.R` for each
+#' scenario (if `.save = TRUE`).
+#' @param .save Logical. Should the `scenario.R` file containing the code
+#' that can basically be run to re-create the simulated scenario be generated?
+#' The point is not really to run this code, but it is nice to have as a record
+#' of what was done to generate the outputs.
+#' @return An object of class `cts_scenario_evaluated` or
+#' `cts_scenario_evaluated_list` depending on whether a single [scenario] or a
+#' [scenario_list] was passed in.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#' CTS(scenario(name="foo"))
 #' @export
 CTS <- function(x, ...) UseMethod("CTS")
 
+#' @rdname CTS
 #' @export
-CTS.cts_scenario <- function(x, ..., timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=FALSE) {
+CTS.cts_scenario <- function(x, ..., timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=FALSE) {
     res <- do_sim(x, timestamp=timestamp, .path=.path, .save=.save)
     fixup_scenario_table(.path=.path)
     invisible(res)
 }
 
+#' @rdname CTS
 #' @export
-CTS.cts_scenario_list <- function(x, ..., timestamp=format(Sys.time(), "%Y-%m-%d"), .path=file.path("cts_results", timestamp), .save=FALSE) {
+CTS.cts_scenario_list <- function(x, ..., timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=FALSE) {
     res <- lapply(x, do_sim, timestamp=timestamp, .path=.path, .save=.save)
     fixup_scenario_table(.path=.path)
     names(res) <- sapply(res, get_name)
@@ -131,8 +160,6 @@ fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
         x <- fread(file.path(.path, scenario_table), fill=T)
         x <- x[rev(!duplicated(rev(scenario)))]
         x <- x[scenario %in% dir(.path)]
-        #keep <- sapply(x, function(xx) !all(is.na(xx)))
-        #x <- x[, keep, with=F]
         if (nrow(x)==0 || ncol(x)==0) {
             file.remove(file.path(.path, scenario_table))
         } else {
@@ -144,71 +171,74 @@ fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
 }
 
 
-#' Scenario replication
-#'  
-#' @param scenario The [scenario] to replicate.
-#' @param nreplicates The number of times to replicate the scenario.
-#' @param seed The initial RNG seed to use.
-#' @param collate Collate the replication results.
-#' @export
-replication <- function(scenario, nreplicates, seed=NULL, collate=NULL) {
+# #' Scenario replication
+# #'  
+# #' @param scenario The [scenario] to replicate.
+# #' @param nreplicates The number of times to replicate the scenario.
+# #' @export
+# replication <- function(scenario, nreplicates) {
+# 
+#     stop("Not implemented yet")
+# 
+# }
 
-    if (!is.null(attr(scenario, "seed"))) {
-        warning("The scenario being replicated has a random seed. This is generally not desirable because it usually implies that the replicates will all be the same. Set the seed on the replication object instead.")
-    }
-
-    #do.call(scenario_list, c(replicate(nreplicates, scenario, simplify=FALSE), list(seed=seed, collate=collate)))
-    as_scenario_list(replicate(nreplicates, scenario, simplify=FALSE), seed=seed, collate=collate)
-}
-
-#' Add parameter uncertainty to a scenario
-#'
-#' @param scenario The [scenario] to add parameter uncertainty to.
-#' @param ... Additional arguments (ignored).
-#' @export
-parameter_uncertainty <- function(scenario, ...) {
-    stop("to be implemented")
-}
+# #' Add parameter uncertainty to a scenario
+# #'
+# #' @param scenario The [scenario] to add parameter uncertainty to.
+# #' @param ... Additional arguments (currently ignored).
+# #' @export
+# parameter_uncertainty <- function(scenario, ...) {
+# 
+#     stop("Not implemented yet")
+# 
+# }
 
 
 #' Collate simulation results from multiple scenarios
 #'
+#' This function can be used after running multiple scenarios with `CTS` to
+#' combine the results for further processing and output generation.
+#'
 #' @param x An object.
-#' @param ... Additional arguments (ignored).
+#' @param ... Additional arguments (currently ignored).
 #' @param outputs (optional) A [cts_output] or [cts_output_list].
-#' @return A `data.frame`
+#' @param .path The path containing the simulation results. This directory
+#' should contain the file `scenarios.csv` as well as subfolders for each
+#' scenario, as generated by [CTS()].
+#' @return A `data.frame`.
 #' @export
 collate <- function(x, ..., outputs=NULL) UseMethod("collate")
 
 
+# #' @export
+# collate.cts_scenario_evaluated_list <- function(x, ..., what, scenario_table=get_scenario_table(x), outputs=NULL) {
+#     dat <- data.table(
+#         scenario = sapply(x, get_name)
+#     )[, getElement(x[[scenario]], name=what), by=scenario]
+#     dat <- setDT(scenario_table)[dat, on="scenario"]
+# 
+#     if (!is.null(outputs)) {
+#         outres <- rlang::eval_tidy(outputs, list(data=dat))
+#         if (!is.null(outres)) {
+#             cts_save(outres, .path=x)
+#         }
+#     }
+#     dat
+# }
+
+
+#' @rdname collate
 #' @export
-collate.cts_scenario_evaluated_list <- function(x, ..., what, scenario_table=get_scenario_table(x), outputs=NULL) {
-    dat <- data.table(
-        scenario = sapply(x, get_name)
-    )[, getElement(x[[scenario]], name=what), by=scenario]
-    dat <- setDT(scenario_table)[dat, on="scenario"]
+collate.character <- function(x, ..., outputs=NULL, .path=file.path("cts_results", as.Date(Sys.time()))) {
 
-    if (!is.null(outputs)) {
-        outres <- rlang::eval_tidy(outputs, list(data=dat))
-        if (!is.null(outres)) {
-            cts_save(outres, .path=x)
-        }
-    }
-    dat
-}
-
-
-#' @export
-collate.character <- function(x, ..., path=file.path("cts_results", format(Sys.time(), "%Y-%m-%d")), scenario_table="scenarios.csv", outputs=NULL) {
-
-    scenario_table <- data.table::fread(file.path(path, scenario_table))
+    scenario_table <- data.table::fread(file.path(.path, "scenarios.csv"))
     scenario_table <- scenario_table[rev(!duplicated(rev(scenario)))]
 
     # Remove empty columns
     keep <- sapply(scenario_table, function(x) !all(is.na(x)))
     scenario_table <- scenario_table[, keep, with=F]
 
-    scenario_files <- scenario_table[, list(file=file.path(path, scenario, x)), by=scenario]
+    scenario_files <- scenario_table[, list(file=file.path(.path, scenario, x)), by=scenario]
 
     f <- function(file, scenario) {
         dat <- data.table::fread(file)
@@ -222,7 +252,7 @@ collate.character <- function(x, ..., path=file.path("cts_results", format(Sys.t
     if (!is.null(outputs)) {
         outres <- rlang::eval_tidy(outputs, list(data=dat))
         if (!is.null(outres)) {
-            cts_save(outres, .path=path)
+            cts_save(outres, .path=.path)
         }
     }
     dat
@@ -240,34 +270,44 @@ get_name <- function(x) {
     x
 }
 
-
 # @internal
 get_seed <- function(x) {
     x %@% "seed"
 }
 
-
-#' Get the scenario table for a list of scenarios
-#'
-#' @param scenario_list The [scenario_list] for which to get the table.
-#' @return A `data.frame`.
-#' @export
-get_scenario_table <- function(scenario_list) {
-    data.table::rbindlist(fill=T, lapply(scenario_list, function(scenario) {
-        data.table(
-            scenario      = get_name(scenario               ),
-            seed          = get_seed(scenario               ),
-            parameters    = get_name(scenario$parameters    ),
-            population    = get_name(scenario$population    ),
-            subject_model = get_name(scenario$subject_model ),
-            treatment     = get_name(scenario$treatment     ),
-            pkpd_model    = get_name(scenario$pkpd_model    ),
-            simulation    = get_name(scenario$simulation    ),
-            endpoints     = get_name(scenario$endpoints     ),
-            summarization = get_name(scenario$summarization )
-        )
-    })) |> as.data.frame()
+# @internal
+get_module <- function(x) {
+    x %@% "module"
 }
+
+# @internal
+get_outputs <- function(x) {
+    x %@% "outputs"
+}
+
+
+
+# #' Get the scenario table for a list of scenarios
+# #'
+# #' @param scenario_list The [scenario_list] for which to get the table.
+# #' @return A `data.frame`.
+# #' @export
+# get_scenario_table <- function(scenario_list) {
+#     data.table::rbindlist(fill=T, lapply(scenario_list, function(scenario) {
+#         data.table(
+#             scenario      = get_name(scenario               ),
+#             seed          = get_seed(scenario               ),
+#             parameters    = get_name(scenario$parameters    ),
+#             population    = get_name(scenario$population    ),
+#             subject_model = get_name(scenario$subject_model ),
+#             treatment     = get_name(scenario$treatment     ),
+#             pkpd_model    = get_name(scenario$pkpd_model    ),
+#             simulation    = get_name(scenario$simulation    ),
+#             endpoints     = get_name(scenario$endpoints     ),
+#             summarization = get_name(scenario$summarization )
+#         )
+#     })) |> as.data.frame()
+# }
 
 
 #********************************************************************************
@@ -284,12 +324,40 @@ get_scenario_table <- function(scenario_list) {
 #' multitute of scenarios.
 #'
 #' Each module has the same structure: it consists of a named list of
-#' expressions that are run in sequence when the scenario is executed.
+#' expressions that are run in sequence when the scenario is executed. These
+#' functions that create modules are not meant to be called on their own, but
+#' rather inside a [scenario].
 #'
 #' @param ... A named list of expressions.
 #' @param outputs (optional) A [cts_output] or [cts_output_list].
-#' @param seed Modules can be given a RNG seed, for reproducibility.
-#' @return A module object.
+#' @param seed (optional) Modules can be given a RNG seed, for reproducibility.
+#' @return A `cts_module` object.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#' CTS(scenario(name="foo",
+#'     parameters    = parameters(),
+#'     population    = population(),
+#'     subject_model = subject_model(),
+#'     treatment     = treatment(),
+#'     pkpd_model    = pkpd_model(),
+#'     simulation    = simulation(),
+#'     endpoints     = endpoints(),
+#'     summarization = summarization()
+#' ))
+#'
+#' # There is also a syntax that uses pipes to build up the scenario
+#' # (note the mandatory underscore '_' at the end of each module name):
+#' scenario(name="foo") |>
+#'     parameters_() |>
+#'     population_() |>
+#'     subject_model_() |>
+#'     treatment_() |>
+#'     pkpd_model_() |>
+#'     simulation_() |>
+#'     endpoints_() |>
+#'     summarization_() |>
+#'     CTS()
+#'
 #' @name cts_module
 NULL
 
@@ -384,7 +452,6 @@ summarization_ <- function(scenario, ...) update(scenario, summarization=summari
 make_cts_module_grid <- function(module) {
     function(...) {
         f <- function(y) {
-            #c(0, seq_along(y))
             c(seq_along(y))
         }
 
@@ -400,7 +467,12 @@ make_cts_module_grid <- function(module) {
 }
 
 #' CTS module grid
-#' @param ... A list of modeles to include.
+#'
+#' @param ... Any objects (typically vectors or lists).
+#' @return A `list` of [cts_module] objects.
+#' @examples
+#' # This will create 5 scenarios, each with a different value for the parameter x:
+#' scenario_grid(scenario(name="foo"), parameters=parameters_grid(x=1:5))
 #' @name cts_module_grid
 NULL
 
@@ -437,6 +509,11 @@ endpoints_grid <- make_cts_module_grid("endpoints")
 summarization_grid <- make_cts_module_grid("summarization")
 
 
+#' @exportS3Method base::print
+print.cts_module <- function(x, ...) {
+    cat(paste0(get_module(x), ": ", get_name(x), "\n"))
+}
+
 
 #********************************************************************************
 #
@@ -459,10 +536,39 @@ summarization_grid <- make_cts_module_grid("summarization")
 #' @param simulation [simulation] module (optional).
 #' @param endpoints [endpoints] module (optional).
 #' @param summarization [summarization] module (optional).
-#' @param ... Additional arguments, ignored.
-#' @param name Optional scenario name.
+#' @param ... Additional arguments (currently ignored).
+#' @param name Optional scenario name. If omitted, a default name will be
+#' generated such as `ScenarioX` where `X` is a number that is incremented for
+#' each new scneario created.
 #' @param seed RNG seed, for reproducibility.
 #' @param .silent Set to `TRUE` to supress informative messages.
+#' @return A `cts_scenario` object.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#' CTS(scenario(name="foo",
+#'     parameters    = parameters(),
+#'     population    = population(),
+#'     subject_model = subject_model(),
+#'     treatment     = treatment(),
+#'     pkpd_model    = pkpd_model(),
+#'     simulation    = simulation(),
+#'     endpoints     = endpoints(),
+#'     summarization = summarization()
+#' ))
+#'
+#' # There is also a syntax that uses pipes to build up the scenario
+#' # (note the mandatory underscore '_' at the end of each module name):
+#' scenario(name="foo") |>
+#'     parameters_() |>
+#'     population_() |>
+#'     subject_model_() |>
+#'     treatment_() |>
+#'     pkpd_model_() |>
+#'     simulation_() |>
+#'     endpoints_() |>
+#'     summarization_() |>
+#'     CTS()
+#'
 #' @export
 scenario <- function(
     parameters    = NULL,
@@ -474,9 +580,9 @@ scenario <- function(
     endpoints     = NULL,
     summarization = NULL,
     ...,
-    name=NULL,
-    seed=make_seed(),
-    .silent=FALSE
+    name = NULL,
+    seed = make_seed(),
+    .silent = FALSE
 ) {
 
     if (is.null(name)) {
@@ -507,9 +613,28 @@ scenario <- function(
 #' A new scenario can be derived from an existing one by overriding any of its
 #' modules, or specific components of its modules.
 #'
+#' @note By default, the derived scenario has the same RNG seed as the base
+#' scenario. This can be changed by specifying the `seed` argument.
+#'
 #' @param base_scenario A [scenario] which serves as the base scenario from which to derive.
 #' @param ... Further argument passed to [scenario()].
 #' @inheritParams scenario
+#' @return A `cts_scenario` object.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#'
+#' # Create a base scenario in which x=1
+#' base <- scenario(name="base",
+#'   parameters = parameters(x=1),
+#'   simulation = simulation({cat("x =", x, "\n")})
+#' )
+#'
+#' # Overwrite the value of x in the derived scenario
+#' derived <- derive_scenario(base, name="derived", parameters=parameters(x=2))
+#'
+#' # Run both scenarios and observed the output
+#' CTS(base)
+#' CTS(derived)
 #' @export
 derive_scenario <- function(
 
@@ -525,12 +650,8 @@ derive_scenario <- function(
     summarization = NULL,
     ...,
     name = NULL,
-    seed=NULL
+    seed = NULL
 ) {
-
-    #if (is.null(seed) && !is.null(attr(base_scenario, "seed"))) {
-    #    warning("The derived scenario has the same random seed as the base scenario.")
-    #}
 
     x <- scenario(
         parameters    = merge_modules(parameters    , base_scenario$parameters),
@@ -543,18 +664,19 @@ derive_scenario <- function(
         summarization = merge_modules(summarization , base_scenario$summarization),
         ...,
         name=name,
-        seed=seed %||% attr(base_scenario, "seed")
+        seed=seed %||% get_seed(base_scenario)
     )
 
     x
 }
 
-#' Update an existing scenario
-#'
-#' @param object The [scenario] to be updated.
-#' @param ... Further arguments passed to [derive_scenario()].
-#' @inheritParams derive_scenario
-#' @inheritParams scenario
+# Update an existing scenario
+#
+# @param object The [scenario] to be updated.
+# @param ... Further arguments passed to [derive_scenario()].
+# @inheritParams derive_scenario
+# @inheritParams scenario
+# @internal
 #' @export
 update.cts_scenario <- function(object, ..., .silent=TRUE) {
     derive_scenario(object, ...,
@@ -567,24 +689,27 @@ update.cts_scenario <- function(object, ..., .silent=TRUE) {
 #'
 #' Multiples scenarios are combined into a list that can be run as a unit.
 #'
-#' @param ... Any number of [scenario]s.
-#' @param collate How to collate the results.
+#' @param ... Any number of [scenario] objects.
+#' @return A `cts_scenario_list` object.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#' CTS(scenario_list(
+#'     scenario(name="foo"),
+#'     scenario(name="bar")
+#' ))
 #' @export
-scenario_list <- function(..., collate=NULL) {
-    collate <- rlang::enquo(collate)
-    if (rlang::quo_is_null(collate)) collate <- NULL
+scenario_list <- function(...) {
     if (!all(sapply(list(...), inherits, what="cts_scenario"))) {
         stop("A scenario_list should only contain scenarios.")
     }
     sclist <- list(...)
     names(sclist) <- sapply(sclist, get_name)
-    structure(sclist, class=c("cts_scenario_list"), collate=collate)
+    structure(sclist, class=c("cts_scenario_list"))
 }
 
 # @internal
 as_scenario_list <- function(x, ...) {
     do.call(scenario_list, c(x, list(...)))
-    #structure(x, class=c("cts_scenario_list"), ...)
 }
 
 #' Create a scenario grid
@@ -594,6 +719,20 @@ as_scenario_list <- function(x, ...) {
 #'
 #' @inheritParams derive_scenario
 #' @inheritParams scenario
+#' @return A `cts_scenario_list` object.
+#' @examples
+#' # A silly example that does nothing. For realistic examples, see the vignette.
+#'
+#' # This will create 12 scenarios in total, representing all
+#' # combinations of x, y and treatment.
+#' CTS(scenario_grid(
+#'     scenario(name="base", simulation=simulation({cat(x, y, treatment, "\n")})),
+#'     parameters=parameters_grid(x=1:2, y=3:5),
+#'     treatment=list(
+#'         treatment("A"),
+#'         treatment("B")
+#'     )
+#' ))
 #' @export
 scenario_grid <- function(
 
@@ -611,7 +750,6 @@ scenario_grid <- function(
 ) {
 
     f <- function(y) {
-        #c(0, seq_along(y))
         c(seq_along(y))
     }
 
@@ -637,13 +775,21 @@ scenario_grid <- function(
 
     names(sclist) <- sapply(sclist, get_name)
 
-    #do.call(scenario_list, c(sclist, list(...)))
     as_scenario_list(sclist, ...)
 }
 
-# print.cts_scenario_grid <- function(x, ...) {
-#     print(as.data.frame(x)[, apply(x, 2, sum) > 0, drop=F])
-# }
+#' @exportS3Method base::print
+print.cts_scenario <- function(x, ...) {
+    cat(paste0("Scenario: ", get_name(x), "\n"))
+}
+
+#' @exportS3Method base::print
+print.cts_scenario_list <- function(x, ...) {
+    cat(paste0("Scenario list:", "\n"))
+    for (i in seq_along(x)) {
+        cat(paste0("  ", get_name(x[[i]]), "\n"))
+    }
+}
 
 
 
@@ -658,41 +804,41 @@ scenario_grid <- function(
 write_code <- function(x, ..., con) UseMethod("write_code")
 
 # @internal
-#' @exportS3Method
+#' @export
 write_code.NULL <- function(x, ..., con) {
     invisible(NULL) 
 }
 
 # @internal
-#' @exportS3Method
+#' @export
 write_code.cts_scenario <- function(x, ..., con) {
     cat("save.seed <- list()\n\n", file=con)
-    if (!is.null(seed <- attr(x, "seed"))) {
+    if (!is.null(seed <- get_seed(x))) {
         cat("save.seed <- push(save.seed, .Random.seed)\n", file=con)
         cat("set.seed(", seed, ")\n", file=con)
     }
 
     lapply(x, write_code, ..., con=con)
 
-    if (!is.null(seed <- attr(x, "seed"))) {
+    if (!is.null(seed <- get_seed(x))) {
         cat("\n.Random.seed <- top(save.seed)\n", file=con)
         cat("save.seed <- pop(save.seed)\n", file=con)
     }
     invisible(NULL) 
 }
 
-# @internalS3ethod
+# @internal
 #' @export
 write_code.cts_module <- function(x, ..., con) {
-    module.name <- attr(x, "module")
+    module.name <- get_module(x)
     cat("\n\n### ", module.name, "\n\n", file=con)
 
-    if (!is.null(seed <- attr(x, "seed"))) {
+    if (!is.null(seed <- get_seed(x))) {
         cat("save.seed <- push(save.seed, .Random.seed)\n", file=con)
         cat("set.seed(", seed, ")\n", file=con)
     }
 
-    for (i in 1:length(x)) {
+    for (i in seq_along(x)) {
         if (!is.null(names(x))) nm <- names(x)[i]
         if (is.null(names(x)) || nm=="") nm <- module.name
         cat(nm, " <- ", file=con)
@@ -700,12 +846,12 @@ write_code.cts_module <- function(x, ..., con) {
     }
 
     # Outputs will not be generated
-    #if (!is.null(outputs <- attr(x, "outputs"))) {
+    #if (!is.null(outputs <- get_outputs(x))) {
     #    cat("outputs <- ", file=con)
     #    cat(deparse1(rlang::quo_get_expr(outputs), width.cutoff=60L, collapse="\n"), "\n\n", file=con)
     #}
 
-    if (!is.null(seed <- attr(x, "seed"))) {
+    if (!is.null(seed <- get_seed(x))) {
         cat("\n.Random.seed <- top(save.seed)\n", file=con)
         cat("save.seed <- pop(save.seed)\n", file=con)
     }
@@ -734,7 +880,7 @@ write_code.cts_module <- function(x, ..., con) {
 #' @param name A name. It is used to construct the filename for the saved output.
 #' @param width For graphical outputs, the width in inches.
 #' @param height For graphical outputs, the height in inches.
-#' @param ... Additional arguments (ignored).
+#' @param ... Additional arguments (currently ignored).
 #' @return An object that inherits from the class `cts_output`.
 #' @name cts_output
 NULL
@@ -784,26 +930,26 @@ graphical_output <- function(x, ..., name, width, height) {
 cts_save <- function(x, ...) UseMethod("cts_save")
 
 # @internal
-#' @exportS3Method
+#' @export
 cts_save.cts_output_list <- function(x, ..., .path) {
     if (is.null(names(x))) {
-        names(x) <- paste0("output", 1:length(x))
+        names(x) <- paste0("output", seq_along(x))
     }
-    for (i in 1:length(x)) {
+    for (i in seq_along(x)) {
         set_name(x[[i]]) <- get_name(x[[i]]) %||% names(x)[i]
     }
     lapply(x, cts_save, .path=.path)
 }
 
 # @internal
-#' @exportS3Method
+#' @export
 cts_save.cts_graphical_output <- function(x, ..., .path) {
     ggplot2::ggsave(plot=x, filename=file.path(.path, paste0(get_name(x), ".png")),
         width=(x %@% "width"), height=(x %@% "height"), ...)
 }
 
 # @internal
-#' @exportS3Method
+#' @export
 cts_save.cts_csv_output <- function(x, ..., .path) {
     data.table::fwrite(x=x, file=file.path(.path, paste0(get_name(x), ".csv")), ...)
 }
@@ -837,6 +983,10 @@ cts_save.cts_csv_output <- function(x, ..., .path) {
 
 merge_lists <- function(a, b) {
 
+    if (is.null(b)) {
+        return(a) 
+    }
+
     # Extend the sequence x with m+1, m+2, ... so that it's length equals n
     ext_seq <- function(x, n, m) {
         lx <- length(x)
@@ -864,8 +1014,11 @@ merge_lists <- function(a, b) {
 }
 
 merge_modules <- function(a, b) { 
+    if (is.null(a) && is.null(b)) {
+        return(NULL)
+    }
     m <- merge_lists(a, b)
-    for (x in c("seed")) {
+    for (x in c("module", "seed")) {
         attr(m, x) <- attr(a, x, exact=TRUE) %||% attr(b, x, exact=TRUE)
     }
     m

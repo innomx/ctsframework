@@ -12,31 +12,34 @@
 \alias{summarization}
 \title{CTS modules}
 \usage{
-parameters(..., outputs = NULL, seed = NULL)
+parameters(..., name = NULL, outputs = NULL, seed = NULL)
 
-population(..., outputs = NULL, seed = NULL)
+population(..., name = NULL, outputs = NULL, seed = NULL)
 
-subject_model(..., outputs = NULL, seed = NULL)
+subject_model(..., name = NULL, outputs = NULL, seed = NULL)
 
-treatment(..., outputs = NULL, seed = NULL)
+treatment(..., name = NULL, outputs = NULL, seed = NULL)
 
-pkpd_model(..., outputs = NULL, seed = NULL)
+pkpd_model(..., name = NULL, outputs = NULL, seed = NULL)
 
-simulation(..., outputs = NULL, seed = NULL)
+simulation(..., name = NULL, outputs = NULL, seed = NULL)
 
-endpoints(..., outputs = NULL, seed = NULL)
+endpoints(..., name = NULL, outputs = NULL, seed = NULL)
 
-summarization(..., outputs = NULL, seed = NULL)
+summarization(..., name = NULL, outputs = NULL, seed = NULL)
 }
 \arguments{
 \item{...}{A named list of expressions.}
 
+\item{name}{(optional) A name for the module. If omitted, a default name
+will be generated.}
+
 \item{outputs}{(optional) A \link{cts_output} or \link{cts_output_list}.}
 
-\item{seed}{Modules can be given a RNG seed, for reproducibility.}
+\item{seed}{(optional) Modules can be given a RNG seed, for reproducibility.}
 }
 \value{
-A module object.
+A \code{cts_module} object.
 }
 \description{
 Modules are the components that make up a CTS scenario. The power of the
@@ -45,5 +48,34 @@ multitute of scenarios.
 }
 \details{
 Each module has the same structure: it consists of a named list of
-expressions that are run in sequence when the scenario is executed.
+expressions that are run in sequence when the scenario is executed. These
+functions that create modules are not meant to be called on their own, but
+rather inside a \link{scenario}.
+}
+\examples{
+# A silly example that does nothing. For realistic examples, see the vignette.
+CTS(scenario(name="foo",
+    parameters    = parameters(),
+    population    = population(),
+    subject_model = subject_model(),
+    treatment     = treatment(),
+    pkpd_model    = pkpd_model(),
+    simulation    = simulation(),
+    endpoints     = endpoints(),
+    summarization = summarization()
+))
+
+# There is also a syntax that uses pipes to build up the scenario
+# (note the mandatory underscore '_' at the end of each module name):
+scenario(name="foo") |>
+    parameters_() |>
+    population_() |>
+    subject_model_() |>
+    treatment_() |>
+    pkpd_model_() |>
+    simulation_() |>
+    endpoints_() |>
+    summarization_() |>
+    CTS()
+
 }

@@ -13,7 +13,7 @@ graphical_output(x, ..., name, width, height)
 \arguments{
 \item{x}{An expression.}
 
-\item{...}{Additional arguments (ignored).}
+\item{...}{Additional arguments (currently ignored).}
 
 \item{name}{A name. It is used to construct the filename for the saved output.}
 

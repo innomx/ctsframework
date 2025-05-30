@@ -2,15 +2,61 @@
 % Please edit documentation in R/ctsframework.R
 \name{CTS}
 \alias{CTS}
+\alias{CTS.cts_scenario}
+\alias{CTS.cts_scenario_list}
 \title{Perform a clinical trial simulation}
 \usage{
 CTS(x, ...)
+
+\method{CTS}{cts_scenario}(
+  x,
+  ...,
+  timestamp = Sys.time(),
+  .path = file.path("cts_results", as.Date(timestamp)),
+  .save = FALSE
+)
+
+\method{CTS}{cts_scenario_list}(
+  x,
+  ...,
+  timestamp = Sys.time(),
+  .path = file.path("cts_results", as.Date(timestamp)),
+  .save = FALSE
+)
 }
 \arguments{
 \item{x}{An object (e.g. a \link{scenario} or \link{scenario_list}).}
 
-\item{...}{Further arguments (which are currently ignored).}
+\item{...}{Additional arguments (currently ignored).}
+
+\item{timestamp}{This gets used to record when the simulation was run. It is
+also used (by default) in the construction of the path containing the
+simulation results (the date portion only). This helps to prevent overriting
+previous results by accident.}
+
+\item{.path}{Path where the simulation results will be saved. Typically, a
+folder structure will be created under this directory, with a subdirectory
+for each scenario. Within each scenario directory, outputs are saved under a
+subdirectory named for the module in which it is created.  Several other
+files will be created as well, such as \code{scenarios.csv} (a record of the
+scenarios that have been run in this directory) and a \code{scenario.R} for each
+scenario (if \code{.save = TRUE}).}
+
+\item{.save}{Logical. Should the \code{scenario.R} file containing the code
+that can basically be run to re-create the simulated scenario be generated?
+The point is not really to run this code, but it is nice to have as a record
+of what was done to generate the outputs.}
+}
+\value{
+An object of class \code{cts_scenario_evaluated} or
+\code{cts_scenario_evaluated_list} depending on whether a single \link{scenario} or a
+\link{scenario_list} was passed in.
 }
 \description{
-Perform a clinical trial simulation
+This is the function that will actually run the \link{scenario} or
+\link{scenario_list}.
+}
+\examples{
+# A silly example that does nothing. For realistic examples, see the vignette.
+CTS(scenario(name="foo"))
 }
