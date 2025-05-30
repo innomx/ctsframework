@@ -40,11 +40,11 @@ scenario(
 
 \item{name}{Optional scenario name. If omitted, a default name will be
 generated such as \code{ScenarioX} where \code{X} is a number that is incremented for
-each new scneario created.}
+each new scenario created.}
 
 \item{seed}{RNG seed, for reproducibility.}
 
-\item{.silent}{Set to \code{TRUE} to supress informative messages.}
+\item{.silent}{Set to \code{TRUE} to suppress informative messages.}
 }
 \value{
 A \code{cts_scenario} object.
@@ -52,7 +52,7 @@ A \code{cts_scenario} object.
 \description{
 The scenario is the central concept of the CTS framework. A scenario is
 defined by one or more modules. It is the ability to mix and match modules
-to create a multitute of scenarios that gives the framework its power.
+to create a multitude of scenarios that gives the framework its power.
 }
 \examples{
 # A silly example that does nothing. For realistic examples, see the vignette.

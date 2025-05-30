@@ -27,7 +27,7 @@ An object that inherits from the class \code{cts_output}.
 \description{
 Modules are the components that make up a CTS scenario. The power of the
 framework comes from the ability to mix and match modules to easily create a
-multitute of scenarios.
+multitude of scenarios.
 }
 \details{
 Each module has the same structure: it consists of a named list of

@@ -12,27 +12,24 @@
 \alias{summarization}
 \title{CTS modules}
 \usage{
-parameters(..., name = NULL, outputs = NULL, seed = NULL)
+parameters(..., outputs = NULL, seed = NULL)
 
-population(..., name = NULL, outputs = NULL, seed = NULL)
+population(..., outputs = NULL, seed = NULL)
 
-subject_model(..., name = NULL, outputs = NULL, seed = NULL)
+subject_model(..., outputs = NULL, seed = NULL)
 
-treatment(..., name = NULL, outputs = NULL, seed = NULL)
+treatment(..., outputs = NULL, seed = NULL)
 
-pkpd_model(..., name = NULL, outputs = NULL, seed = NULL)
+pkpd_model(..., outputs = NULL, seed = NULL)
 
-simulation(..., name = NULL, outputs = NULL, seed = NULL)
+simulation(..., outputs = NULL, seed = NULL)
 
-endpoints(..., name = NULL, outputs = NULL, seed = NULL)
+endpoints(..., outputs = NULL, seed = NULL)
 
-summarization(..., name = NULL, outputs = NULL, seed = NULL)
+summarization(..., outputs = NULL, seed = NULL)
 }
 \arguments{
 \item{...}{A named list of expressions.}
-
-\item{name}{(optional) A name for the module. If omitted, a default name
-will be generated.}
 
 \item{outputs}{(optional) A \link{cts_output} or \link{cts_output_list}.}
 
@@ -44,7 +41,7 @@ A \code{cts_module} object.
 \description{
 Modules are the components that make up a CTS scenario. The power of the
 framework comes from the ability to mix and match modules to easily create a
-multitute of scenarios.
+multitude of scenarios.
 }
 \details{
 Each module has the same structure: it consists of a named list of

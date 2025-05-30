@@ -2,13 +2,11 @@
 
 <!-- badges: start -->
 
-[![experimental](https://badges.github.io/stability-badges/dist/experimental.svg)](http://github.com/badges/stability-badges)
+![experimental](https://badges.github.io/stability-badges/dist/experimental.svg)
 
 <!-- badges: end -->
 
-<!--
-
-An R package for facilitating the execution of clinical trial simulations.
+An R package for streamlining clinical trial simulation.
 
 ## Installation
 
@@ -21,6 +19,5 @@ remotes::install_github("innomx/ctsframework")
 
 ## Usage
 
-Usage is described in the package [vignette](https://innomx.github.io/ctsframework/vignettes/ctsframework-vignette.html).
+Usage is described in the [vignette](https://innomx.github.io/ctsframework/vignettes/pmx-example.html).
 
--->

@@ -19,10 +19,12 @@ library(ctsframework)
 reset_counter(.all=TRUE)
 
 # Create a temporary directory to hold the results
-today <- format(Sys.time(), "%Y-%m-%d") 
-cts_results_path <- tempfile()
+if (file.exists("cts_results")) {
+    stop("cts_results already exists and would be overwritten")
+}
+dir.create("cts_results", FALSE, TRUE)
+cts_results_path <- file.path("cts_results", as.Date(Sys.time()))
 dir.create(cts_results_path, FALSE, TRUE)
-owd <- setwd(cts_results_path)
 ```
 
 
@@ -230,9 +232,9 @@ that folder you will find a subfolder called `summarization` (the same name as
 the module) that contains these 2 plots:
 
 ```{r, eval=T, echo=F, fig.width=7, fig.height=5}
-x <- CTS(base_scenario)
-outputs <- attr(x$scenario$summarization, "outputs")
-outres <- rlang::eval_tidy(outputs, c(x))
+x <- CTS(base_scenario, .path=cts_results_path)
+outputs <- attr(x$scenario$summarization, "outputs", exact=TRUE)
+outres <- rlang::eval_tidy(outputs, x)
 outres[[1]]
 outres[[2]]
 ```
@@ -354,7 +356,7 @@ afterwards.
 
 ```{r, echo=FALSE}
 # Cleanup
-setwd(owd)
 unlink(cts_results_path, recursive=T)
+unlink("cts_results", recursive=T)
 ```
 

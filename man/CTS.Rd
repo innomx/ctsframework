@@ -31,7 +31,7 @@ CTS(x, ...)
 
 \item{timestamp}{This gets used to record when the simulation was run. It is
 also used (by default) in the construction of the path containing the
-simulation results (the date portion only). This helps to prevent overriting
+simulation results (the date portion only). This helps to prevent overwriting
 previous results by accident.}
 
 \item{.path}{Path where the simulation results will be saved. Typically, a

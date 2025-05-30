@@ -42,7 +42,7 @@ derive_scenario(
 
 \item{name}{Optional scenario name. If omitted, a default name will be
 generated such as \code{ScenarioX} where \code{X} is a number that is incremented for
-each new scneario created.}
+each new scenario created.}
 
 \item{seed}{RNG seed, for reproducibility.}
 }

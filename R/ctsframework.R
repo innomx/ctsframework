@@ -114,7 +114,7 @@ do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results"
 #' @param ... Additional arguments (currently ignored).
 #' @param timestamp This gets used to record when the simulation was run. It is
 #' also used (by default) in the construction of the path containing the
-#' simulation results (the date portion only). This helps to prevent overriting
+#' simulation results (the date portion only). This helps to prevent overwriting
 #' previous results by accident.
 #' @param .path Path where the simulation results will be saved. Typically, a
 #' folder structure will be created under this directory, with a subdirectory
@@ -321,7 +321,7 @@ get_outputs <- function(x) {
 #'
 #' Modules are the components that make up a CTS scenario. The power of the
 #' framework comes from the ability to mix and match modules to easily create a
-#' multitute of scenarios.
+#' multitude of scenarios.
 #'
 #' Each module has the same structure: it consists of a named list of
 #' expressions that are run in sequence when the scenario is executed. These
@@ -526,7 +526,7 @@ print.cts_module <- function(x, ...) {
 #'
 #' The scenario is the central concept of the CTS framework. A scenario is
 #' defined by one or more modules. It is the ability to mix and match modules
-#' to create a multitute of scenarios that gives the framework its power.
+#' to create a multitude of scenarios that gives the framework its power.
 #'
 #' @param parameters [parameters] module (optional).
 #' @param population [population] module (optional).
@@ -539,9 +539,9 @@ print.cts_module <- function(x, ...) {
 #' @param ... Additional arguments (currently ignored).
 #' @param name Optional scenario name. If omitted, a default name will be
 #' generated such as `ScenarioX` where `X` is a number that is incremented for
-#' each new scneario created.
+#' each new scenario created.
 #' @param seed RNG seed, for reproducibility.
-#' @param .silent Set to `TRUE` to supress informative messages.
+#' @param .silent Set to `TRUE` to suppress informative messages.
 #' @return A `cts_scenario` object.
 #' @examples
 #' # A silly example that does nothing. For realistic examples, see the vignette.
@@ -871,7 +871,7 @@ write_code.cts_module <- function(x, ..., con) {
 #'
 #' Modules are the components that make up a CTS scenario. The power of the
 #' framework comes from the ability to mix and match modules to easily create a
-#' multitute of scenarios.
+#' multitude of scenarios.
 #'
 #' Each module has the same structure: it consists of a named list of
 #' expressions that are run in sequence when the scenario is executed.
@@ -1096,9 +1096,9 @@ list_counters <- closure_counter$list_counters
 
 #' Quantile interval
 #'
-#' A level $α$ quantile interval of `x` is the interval whose endpoints are the
-#' upper and lower $(1-α)/2$ quantiles of `x`. In other words, it covers a
-#' $(1-α)$ fraction of the data, with an equal number of points outside the
+#' A level \eqn{\alpha} quantile interval of `x` is the interval whose endpoints are the
+#' upper and lower \eqn{(1-\alpha)/2} quantiles of `x`. In other words, it covers a
+#' \eqn{(1-\alpha)} fraction of the data, with an equal number of points outside the
 #' interval in each tail.
 #'
 #' @param x A numeric vector.

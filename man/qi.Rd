@@ -21,9 +21,9 @@ A named list of numbers, giving the lower and upper limits of the
 interval, as well as the median.
 }
 \description{
-A level $α$ quantile interval of \code{x} is the interval whose endpoints are the
-upper and lower $(1-α)/2$ quantiles of \code{x}. In other words, it covers a
-$(1-α)$ fraction of the data, with an equal number of points outside the
+A level \eqn{\alpha} quantile interval of \code{x} is the interval whose endpoints are the
+upper and lower \eqn{(1-\alpha)/2} quantiles of \code{x}. In other words, it covers a
+\eqn{(1-\alpha)} fraction of the data, with an equal number of points outside the
 interval in each tail.
 }
 \examples{
