@@ -28,33 +28,32 @@ dir.create(cts_results_path, FALSE, TRUE)
 ```
 
 
-
-
-# Introduction
+## Introduction
 
 One of the core elements of pharmacometrics is to perform clinical trial
 simulations (CTS) to help inform decisions in clinical drug development (for
-instance, to explore different dosing regimens). The de facto computing
-environment for this is R, and there are many excellent packages that can be
-leveraged.  However, what tends to happen is that the number of different
-"scenarios" that need to be simulated grows exponentially, and as a
-consequence the resulting code tends to explode in complexity and become
-cumbersome to manage. The purpose of the `ctsframework` package is to make the
-CTS process more modular, and to help manage the complexity.
+instance, to explore different dosing regimens). In most cases, R is a suitable
+environment for this, and there are many excellent packages that can be
+leveraged.  In practice, what tends to happen is that there is a desire to
+explore a large number of "what if" scenarios, either different treatments,
+populations, models or other tweaked parameters, and as a consequence the
+resulting code tends to grow in complexity and become cumbersome to manage. The
+purpose of the `ctsframework` package is to make the CTS process more modular,
+and to help manage the complexity.
 
 Much as the infamous `ggplot2` package is designed around a "grammar of
-graphics", this package offers a "grammar" of semantically named functions that
-correspond to different components of a clinical trial simulation.  Designed
-for maximum flexibility and convenience. The central object is the scenario.
-Specific functions or "modules" correspond to different aspects of CTS which
-helps with semantics.
-
+graphics", this package offers something like a "grammar" of semantically named
+functions that correspond to different components of a clinical trial
+simulation.  Designed for maximum flexibility and convenience. The central
+object is the `scenario`, which is composed of specific "modules" corresponding
+to different aspects of CTS.
 
 Withing `ctsframework`, a CTS is specified by one or more scenarios. A scenario
 is broken down into multiple steps or "modules":
 
 - **parameters**: This module can be used to specify any general parameters
-  that are related to a scenario.
+  that are related to a scenario. An example could be the sample size, for
+  instance.
 
 - **population**: In most clinical trial simulations, the starting point is
   defining a population of 'virtual patients'. This module is where you would
@@ -71,14 +70,15 @@ is broken down into multiple steps or "modules":
   can be a dose, formulation etc.
 
 - **pkpd_model**: In pharmacometric applications, there will typically be a
-  PK/PD model consisting of by differential equations, which can be specified
+  PK/PD model consisting of differential equations, which can be specified
   in this module.
 
 - **simulation**: At this point, it's time to carry out the actual simulation.
+  This module contains the code that runs it.
 
-- **endpoints**: From the simulation output (which could for instance be a
-  longitudinal data set), a number of endpoints can be derived, which is what
-  this module is intended for.
+- **endpoints**: From the simulation output (which could for instance be a PK
+  concentration-time profile, or some other complex object), a number of
+  endpoints can be derived, which is what this module is intended for.
 
 - **summarization**: This module is intended for summarizing results across
   individuals, such as taking means, medians, specific quantiles, etc. (Note:
@@ -86,10 +86,16 @@ is broken down into multiple steps or "modules":
   across scenarios; the latter is the purpose of the `collate()` function,
   described below).
 
-At each step, the results of the models that appear higher up are available and
-can be used in the subsequent computation. By mixing and matching different
-modules, it is easy to specify many different scenarios without a lot of
-code repetition.
+In fact, each module is very general, and essentially equivalent; each can
+contain any number of named items of arbitrary complexity. The semantic module
+names are simply there to help make the code more organized and intentional.
+All the modules are optional.
+
+The power of the framework is that each module subitem can be overridden to
+creat a new scenario. At each step, the submitems of the modules that appear
+higher up are available and can be used in the subsequent computation. By
+mixing and matching different modules, it is easy to specify many different
+scenarios without a lot of code repetition.
 
 ## A complete pharmacometrics example
 
@@ -105,7 +111,7 @@ library(table1)
 library(ttt)
 ```
 
-Also, for reproducibility we better set the RNG seed:
+Also, for reproducibility we had better set the RNG seed:
 
 ```{r}
 set.seed(2755139)
@@ -113,6 +119,13 @@ set.seed(2755139)
 
 
 ### Defining a base scenario
+
+Now, we begin by defining our first scenario, which will be our "base" scenario
+(latter we will see how we can derive new scenarios from this one). The example
+will be to simulate from a simple 2-compartment population PK model (it could
+be a simplified monoclonal antibody model). This code block will apepar quite
+long, but we will go through and explain each elements
+afterwards.
 
 ```{r}
 base_scenario <- scenario(name="Base Scenario",
@@ -220,16 +233,178 @@ base_scenario <- scenario(name="Base Scenario",
 )
 ```
 
+Now, we will go through the above code and briefly explain each module separately.
+
+We start by looking a the `parameters`
+
+```{r, eval=F}
+    parameters = parameters(
+        n  = 1000,
+        th = list(CL=0.0194, V1=4.51, Q=0.0435, V2=2.82, CL_WT=0.46, V1_WT=0.87),
+        om = LTmat(c(0.1, 0.01, 0.1), .names=c("nCL", "nV1"))
+    )
+```
+
+We have specified a 3 parameters: the number of individual we want to simulate
+(n), a THETA vector of fixed-effect parameters (th), and an OMEGA matrix for
+between-individual variability (om). These parameters will be used in
+subsequent code. Since each module is completely general, we are free to
+specify whatever we want, and whatever help to make the code more organized.
+
+```{r, eval=F}
+    population = population(
+        wtcatfn = cut_mapping(c(0, 60, 100, Inf), c("<60 kg", "60 to <100 kg", ">= 100 kg"), right=TRUE),
+        {
+            data.table(ID=1:n, wt=exp(rnorm(n, log(74), 0.2)))[, wtcat := wtcatfn(wt)]
+        }
+    )
+```
+
+There are actually 2 things being specified here. One is a named function
+`wtcatfn()` that transforms body weight into weight categories. The other is an
+unnamed code block that generates a population dataset. Note that the parameter
+`n` appears in this code block, as does the `wtcatfn()` defined previously.
+Again, anything that appear higher up is accessible in the code. However, it is
+important to note that an unnamed code block such as we have used here can be
+referred in subsequent modules using the module name in which is was specified
+(in this case, `population`).
+
+```{r, eval=F}
+    subject_model = subject_model(
+        {
+            eta <- generateETA(n, omega=om)
+
+            cbind(population, eta)[, `:=`(
+                CL = th$CL * exp(nCL) * (wt/70)^th$CL_WT,
+                V1 = th$V1 * exp(nV1) * (wt/70)^th$V1_WT
+            )]
+        }
+    )
+```
+
+In an unnamed code block, we use the augment the population dataset with
+individual level random effects and parameters.
+
+```{r, eval=F}
+    treatment = treatment(
+        {
+            population[, .(ID, amt=wt*3, tinf=0.5, addl=5, ii=2*24*7)]
+        }
+    )
+```
+
+For the treatment, we will assume a dose of 3 mg/kg given as a half-hour
+infusion every two weeks over 12 weeks.
+
+```{r, eval=F}
+    pkpd_model = pkpd_model(
+        {
+            model.code <- '
+            [param]   CL=1, V1=1, V2=1, Q=1
+            [pkmodel] cmt="CENTRAL PERIPH"
+            [table]   capture conc = CENTRAL/V1;
+            '
+
+            mcode_cache("2cmt", model.code)
+        }
+    )
+```
+
+In an unnamed code block, the 2-compartment PK model is defined using
+`mrgsolve` syntax (the `mrgsolve` package has great documentation). The result
+is the compiled model.
+
+```{r, eval=F}
+    simulation = simulation(
+        {
+            eoi <- realize_addl(as.ev(treatment)) |> as.data.frame() |> with(time + (amt/rate)) |> unique() |> sort()
+
+            sim <- pkpd_model |>
+                param(th) |>
+                idata_set(subject_model) |>
+                ev(as.ev(treatment)) |>
+                Req(conc) |>
+                update(end=12*24*7, delta=24, add=eoi) |>
+                mrgsim()
+
+            simdat <- sim |> as.data.frame() |> as.data.table()
+
+            population[simdat, on="ID"]
+        }
+    )
+```
+
+In an unnamed code block, the concentration-time profiles are generated using
+`mrgsolve`.
+
+```{r, eval=F}
+    endpoints = endpoints(
+        {
+            auc.by.trapezoid <- function(x, y) sum(0.5*diff(x)*(y[-1] + y[-length(y)]))
+
+            simulation[time >= 6*24*7, .(
+                cmin=min(conc),
+                cmax=max(conc),
+                cavg=auc.by.trapezoid(time, conc)/diff(range(time))),
+            by=ID][population, on="ID"]
+        },
+
+        outputs = csv_output(endpoints, name="sim-exposure")
+    )
+```
+
+Next, we derive some "endpoints", in this case exposure metrics over the last
+treament interval, for each individual. For the first time, a module contains
+an output -- the resulting dataframe will be stored in a CSV file. The location
+of this CSV file will be explained later.
+
+```{r, eval=F}
+    summarization = summarization(
+        {
+            list(
+                overall = simulation[, qi(conc, level=0.9), by=time],
+                bywtcat = simulation[, qi(conc, level=0.9), by=.(time, wtcat=wtcatfn(wt))]
+            )
+        },
+
+        outputs = output_list(
+            graphical_output(name="sim-profile-90pctPI-overall", width=7, height=5, {
+                ggplot(summarization$overall, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                    geom_ribbon(color=NA, fill="blue", alpha=0.1) +
+                    geom_line() +
+                    theme_bw()
+            }),
+            graphical_output(name="sim-profile-90pctPI-bywtcat", width=7, height=5, {
+                ggplot(summarization$bywtcat, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                    facet_wrap(~ wtcat) +
+                    geom_ribbon(color=NA, fill="blue", alpha=0.1) +
+                    geom_line() +
+                    theme_bw()
+            })
+        )
+    )
+```
+
+We summarize the PK concentration-time profiles by taking the median, 5th and
+95th percentiles at each time point. We do this both overall, and stratified by
+weight category.  Then, we produce two graphical outputs using `ggplot`.
+
+
 ### Running a scenario
+
+To run the base scenario, we do the following:
 
 ```{r, eval=F}
 CTS(base_scenario)
 ```
 
-After the scenario has finished running, you will find that there is a folder
-in the current directory named `cts_results/2023-01-20/Base Scenario`. Within
-that folder you will find a subfolder called `summarization` (the same name as
-the module) that contains these 2 plots:
+After the scenario has finished running, there is a new folder in the current
+directory named `r paste0(cts_results_path, "Base Scenario")` which contains
+the specified outputs each in their own subfolder corresponding to the name of
+the module where it was specified. For instance, the subfolder named
+`summarization` contains these 2 plots:
 
 ```{r, eval=T, echo=F, fig.width=7, fig.height=5}
 x <- CTS(base_scenario, .path=cts_results_path)
@@ -239,7 +414,27 @@ outres[[1]]
 outres[[2]]
 ```
 
+The way the folder structure is defined is as follows. When the `CTS()`
+function is called, a `.path` argument specifies the root path for the
+simulation; the defaut is `cts_results/dd-mm-yyyy`, where `dd-mm-yyyy` is the
+current date. Under this root folder, there will be a subfolder for each
+scenario, named according to the scenario name (each scenario has a name
+attribute, the default being `Scenario` followed by a sequential number). Then,
+under each scenario folder there may be subfolders corresponding to individual
+modules. This folder structure helps to keep things organized neatly.
+
+The simulation root folder also contains a file called `scenarios.csv` that
+contains useful information about each scenario that has been run.
+
 ### Deriving a new scenario from an existing one
+
+Often there is more that one scenario to simulate, and here's where it starts
+to get interesting. We can derive a new scenario from an existing one by
+essentially specifying only the parts that we want to override.
+
+Here, we will derive two new scenarios from the base scenario to explore dosing
+the is independent of body weight (recall that the base regimen was 3 mg/kg
+Q2W): 200 mg Q2W, and 300 mg Q3W.
 
 ```{r, eval=F}
 scenario_fixed_200mg_q2w <- derive_scenario(base_scenario,
@@ -255,7 +450,15 @@ scenario_fixed_300mg_q3w <- derive_scenario(base_scenario,
 )
 ```
 
+Notice that we only specified the `treatment` module, and within that module
+only the unnamed code block. Everything else stays as it was in the base
+scenario, and all the modules downstream from `treatment` will automatically
+pick up the new code when the derived scenarios are run.
+
 ### Creating a scenario list
+
+Now, we could run each of the drived scenarios independently, but instead will
+will combine them into a list that can be run using a single call:
 
 ```{r, eval=F}
 sclist <- scenario_list(base_scenario, scenario_fixed_200mg_q2w, scenario_fixed_300mg_q3w)
@@ -263,8 +466,16 @@ sclist <- scenario_list(base_scenario, scenario_fixed_200mg_q2w, scenario_fixed_
 CTS(sclist)
 ```
 
+All 3 scenario are execuated.
+
 
 ### Creating a scenario grid
+
+Frequently, we want to explore all possible combinations of different factors.
+For this, we can use as scenario grid. Here, we will simulate each of 3 dosing
+regimens under 2 different models, one with extimated body weight exponents for
+allometric scaling, and the other with fixed (theoretical) exponents.  We can
+specify this as follows:
 
 ```{r}
 scgrid <- scenario_grid(base_scenario,
@@ -285,8 +496,10 @@ scgrid <- scenario_grid(base_scenario,
 CTS(scgrid)
 ```
 
-Each scenario will generate the same outputs as the base scenario, using the
-specified parameters and treatment regimens.
+Each of the 6 scenario will generate the same outputs as the base scenario,
+using the specified parameters and treatments. Again, we only need to specify
+the elements we wish to override.  Giving the modules discriptive names will be
+helpful in the next section when we combine the various scenarios.
 
 ### Putting it all together
 
@@ -295,22 +508,16 @@ day, the goal is often to produce a few key tables and/or figures that
 summarize and compare a collection of different scenarios. That is the purpose
 of the `collate()` function.
 
-There are 2 ways of doing this:
-
-  1. Using the object returned by the `CTS()` function, which contains multiple
-     scenario results in memory.
-
-  2. Reading in the data that was saved to disc during the execution of each
-     scenario.
-
-
-In this example, we will use the second approach.
-
 ```{r}
 dat <- collate("endpoints/sim-exposure.csv")
 ```
 
-Now, we can produce a nice table to summarize our results across all 6 scenarios:
+What happens is, the outputs generated separately for each scenario are merged
+together, along with additional information like the names we gave to each of
+the modules.
+
+Hence, we can now produce a nice table to summarize our results across all 6
+scenarios:
 
 ```{r}
 dat <- dat[scenario %in% names(scgrid)]
@@ -339,6 +546,8 @@ ttt(value ~ parameters + variable | treatment, data=dat2, lab="Regimen<br/>Media
 Because simulations usually involve the generation of random data, storing RNG
 seeds is important for reproducibility. By default, each new scenario gets its
 own unique seed (which can be overridden) that gets stored with the object.
+Each scenario's RNG seed is stored in the `scenarios.csv` table, so it can
+easily be reproduced. Still it is a good idea to use `set.seed()` at the start.
 Individual modules can also have their own seeds, but by default they do not.
 If it were desired to simulate multiple different treatments with the same
 population, for instance, then that could be accomplished be having a common
