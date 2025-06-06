@@ -1,4 +1,4 @@
-# Version 0.1.1
+# Version 1.0.0
 
 This is the first submission of `ctsframework` to CRAN.
 
