@@ -10,6 +10,6 @@ temp*.*
 ..Rcheck
 *.Rproj
 .Rproj.user
+CRAN-SUBMISSION
 CRAN-RELEASE
 cts_results
-ctsframework-vignette.html
