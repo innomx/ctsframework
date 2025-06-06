@@ -6,10 +6,12 @@
 
 # @internal
 cts_eval <- function(module, context, scenario, .scenario.path) {
+
     if (!is.null(seed <- get_seed(module))) {
-        save.seed <- .Random.seed
-        on.exit({.Random.seed <- save.seed})
+        save.seed <- save_seed()
+        on.exit({restore_seed(save.seed)})
         set.seed(seed)
+
     }
 
     if (!is.null(module)) {
@@ -39,8 +41,8 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
 do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=TRUE) {
 
     if (!is.null(seed <- get_seed(scenario))) {
-        save.seed <- .Random.seed
-        on.exit({.Random.seed <- save.seed})
+        save.seed <- save_seed()
+        on.exit({restore_seed(save.seed)})
         set.seed(seed)
     }
 
@@ -814,14 +816,14 @@ write_code.NULL <- function(x, ..., con) {
 write_code.cts_scenario <- function(x, ..., con) {
     cat("save.seed <- list()\n\n", file=con)
     if (!is.null(seed <- get_seed(x))) {
-        cat("save.seed <- push(save.seed, .Random.seed)\n", file=con)
+        cat("save.seed <- push(save.seed, .GlobalEnv$.Random.seed)\n", file=con)
         cat("set.seed(", seed, ")\n", file=con)
     }
 
     lapply(x, write_code, ..., con=con)
 
     if (!is.null(seed <- get_seed(x))) {
-        cat("\n.Random.seed <- top(save.seed)\n", file=con)
+        cat("\n.GlobalEnv$.Random.seed <- top(save.seed)\n", file=con)
         cat("save.seed <- pop(save.seed)\n", file=con)
     }
     invisible(NULL) 
@@ -834,7 +836,7 @@ write_code.cts_module <- function(x, ..., con) {
     cat("\n\n### ", module.name, "\n\n", file=con)
 
     if (!is.null(seed <- get_seed(x))) {
-        cat("save.seed <- push(save.seed, .Random.seed)\n", file=con)
+        cat("save.seed <- push(save.seed, .GlobalEnv$.Random.seed)\n", file=con)
         cat("set.seed(", seed, ")\n", file=con)
     }
 
@@ -852,7 +854,7 @@ write_code.cts_module <- function(x, ..., con) {
     #}
 
     if (!is.null(seed <- get_seed(x))) {
-        cat("\n.Random.seed <- top(save.seed)\n", file=con)
+        cat("\n.GlobalEnv$.Random.seed <- top(save.seed)\n", file=con)
         cat("save.seed <- pop(save.seed)\n", file=con)
     }
     invisible(NULL) 
@@ -1026,6 +1028,22 @@ merge_modules <- function(a, b) {
 
 make_seed <- function() {
     round(1e8 * runif(1))
+}
+
+save_seed <- function() {
+    if (exists(".Random.seed", .GlobalEnv)) {
+        get(".Random.seed", envir=.GlobalEnv)
+    } else {
+        NULL
+    }
+}
+
+restore_seed <- function(save.seed) {
+    if (!is.null(save.seed)) {
+        assign(".Random.seed", save.seed, envir=.GlobalEnv)
+    } else {
+        rm(".Random.seed", envir=.GlobalEnv)
+    }
 }
 
 

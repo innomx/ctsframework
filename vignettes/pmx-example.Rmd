@@ -7,8 +7,13 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, echo=FALSE}
+```{r setup, echo=FALSE}
 knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, error=FALSE)
+
+# Create a temporary directory to hold the results
+cts_results_path <- tempfile()
+dir.create(cts_results_path, FALSE, TRUE)
+knitr::opts_knit$set(root.dir=cts_results_path)
 ```
 
 ```{r, echo=FALSE}
@@ -17,14 +22,6 @@ library(ctsframework)
 
 # Reset all counters
 reset_counter(.all=TRUE)
-
-# Create a temporary directory to hold the results
-if (file.exists("cts_results")) {
-    stop("cts_results already exists and would be overwritten")
-}
-dir.create("cts_results", FALSE, TRUE)
-cts_results_path <- file.path("cts_results", as.Date(Sys.time()))
-dir.create(cts_results_path, FALSE, TRUE)
 ```
 
 
@@ -214,15 +211,17 @@ base_scenario <- scenario(name="Base Scenario",
 
         outputs = output_list(
             graphical_output(name="sim-profile-90pctPI-overall", width=7, height=5, {
-                ggplot(summarization$overall, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
-                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                ggplot(summarization$overall, aes(x=time/(24*7), y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (weeks)", y="Concentration (\U{00B5}g/mL)") +
+                    scale_x_continuous(breaks=seq(0, 12, 2)) +
                     geom_ribbon(color=NA, fill="blue", alpha=0.1) +
                     geom_line() +
                     theme_bw()
             }),
             graphical_output(name="sim-profile-90pctPI-bywtcat", width=7, height=5, {
-                ggplot(summarization$bywtcat, aes(x=time, y=q0.5, ymin=q0.05, ymax=q0.95)) +
-                    labs(x="Time (h)", y="Concentration (\U{00B5}g/mL)") +
+                ggplot(summarization$bywtcat, aes(x=time/(24*7), y=q0.5, ymin=q0.05, ymax=q0.95)) +
+                    labs(x="Time (weeks)", y="Concentration (\U{00B5}g/mL)") +
+                    scale_x_continuous(breaks=seq(0, 12, 2)) +
                     facet_wrap(~ wtcat) +
                     geom_ribbon(color=NA, fill="blue", alpha=0.1) +
                     geom_line() +
@@ -401,10 +400,10 @@ CTS(base_scenario)
 ```
 
 After the scenario has finished running, there is a new folder in the current
-directory named `r paste0(cts_results_path, "Base Scenario")` which contains
-the specified outputs each in their own subfolder corresponding to the name of
-the module where it was specified. For instance, the subfolder named
-`summarization` contains these 2 plots:
+directory named "`r file.path(".", "cts_results", as.Date(Sys.time()), "Base
+Scenario")`" which contains the specified outputs each in their own subfolder
+corresponding to the name of the module where it was specified. For instance,
+the subfolder named `summarization` contains these 2 plots:
 
 ```{r, eval=T, echo=F, fig.width=7, fig.height=5}
 x <- CTS(base_scenario, .path=cts_results_path)
@@ -566,6 +565,5 @@ afterwards.
 ```{r, echo=FALSE}
 # Cleanup
 unlink(cts_results_path, recursive=T)
-unlink("cts_results", recursive=T)
 ```
 
