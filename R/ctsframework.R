@@ -5,7 +5,7 @@
 #********************************************************************************
 
 # @internal
-cts_eval <- function(module, context, scenario, .scenario.path) {
+cts_eval <- function(module, context, scenario, irep=NULL, .scenario.path=NULL) {
 
     if (!is.null(seed <- get_seed(module))) {
         save.seed <- save_seed()
@@ -25,20 +25,20 @@ cts_eval <- function(module, context, scenario, .scenario.path) {
         }
     }
 
-    if (!is.null(outputs <- get_outputs(module))) {
+    if (!is.null(outputs <- get_outputs(module)) && !is.null(.scenario.path)) {
         .module.path <- file.path(.scenario.path, get_module(module))
         dir.create(.module.path, showWarnings=FALSE, recursive=TRUE)
         outcontext <- c(context, list(.module.path=.module.path))
         outres <- rlang::eval_tidy(outputs, outcontext)
         if (!is.null(outres)) {
-            cts_save(outres, .path=.module.path)
+            cts_save(outres, irep=irep, .path=.module.path)
         }
     }
     context
 }
 
 # @internal
-do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=TRUE) {
+do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results", as.Date(timestamp)), .save=FALSE) {
 
     if (!is.null(seed <- get_seed(scenario))) {
         save.seed <- save_seed()
@@ -57,29 +57,52 @@ do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results"
         write_code(scenario, con=con)
     }
 
-    x <- scenario
+    nreplicates <- scenario %@% "nreplicates"
+    collate     <- scenario %@% "collate"
 
-    f <- function(y) cts_eval(y, x, scenario, .scenario.path=.scenario.path)
+    if (is.null(nreplicates)) {
 
-    #x <- f(scenario$parameters)
-    #x <- f(scenario$population)
-    #x <- f(scenario$subject_model)
-    #x <- f(scenario$treatment)
-    #x <- f(scenario$pkpd_model)
-    #x <- f(scenario$simulation)
-    #x <- f(scenario$endpoints)
-    #x <- f(scenario$summarization)
+        x <- scenario
 
-    for (m in names(scenario)) {
-        x <- f(scenario[[m]])
-        if (!is.null(scenario[[m]]$name)) {
-            set_name(scenario[[m]]) <- x$name
+        f <- function(y) cts_eval(module=y, context=x, scenario=scenario, irep=NULL, .scenario.path=.scenario.path)
+
+        for (m in names(scenario)) {
+            x <- f(scenario[[m]])
+            if (!is.null(scenario[[m]]$name)) {
+                set_name(scenario[[m]]) <- x$name
+            }
         }
+
+        scenario_evaluated <- x
+
+        any_outputs <- !(all(sapply(lapply(scenario, get_outputs), is.null)))
+
+    } else {
+
+        scenario_evaluated <- list()
+
+        for (irep in seq_len(nreplicates)) {
+
+            x <- scenario
+
+            f <- function(y) cts_eval(module=y, context=x, scenario=scenario, irep=irep, .scenario.path=.scenario.path)
+
+            for (m in names(scenario)) {
+                x <- f(scenario[[m]])
+                if (!is.null(scenario[[m]]$name)) {
+                    set_name(scenario[[m]]) <- x$name
+                }
+            }
+
+            scenario_evaluated[[irep]] <- x
+        }
+
+        if (!is.null(collate)) {
+            scenario_evaluated <- cts_eval(module=collate, context=list(replicates=scenario_evaluated), scenario=scenario, irep=NULL, .scenario.path=.scenario.path)
+        }
+
+        any_outputs <- !(all(sapply(lapply(scenario, get_outputs), is.null)) && is.null(get_outputs(collate)))
     }
-
-    x$scenario <- scenario
-
-    any_outputs <- !all(sapply(lapply(scenario, get_outputs), is.null))
 
     if (any_outputs) {
         dir.create(.path, showWarnings=FALSE, recursive=TRUE)
@@ -90,6 +113,7 @@ do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results"
                 timestamp     = timestamp,
                 scenario      = get_name(scenario)               %||% NA,
                 seed          = get_seed(scenario)               %||% NA,
+                nreplicates   = nreplicates                      %||% NA,
                 parameters    = get_name(scenario$parameters)    %||% NA,
                 population    = get_name(scenario$population)    %||% NA,
                 subject_model = get_name(scenario$subject_model) %||% NA,
@@ -102,8 +126,10 @@ do_sim <- function(scenario, timestamp=Sys.time(), .path=file.path("cts_results"
         )
     }
  
+    scenario_evaluated %@% "nreplicates" <- nreplicates
+    scenario_evaluated %@% "scenario"    <- scenario
 
-    invisible(structure(x, class="cts_scenario_evaluated", timestamp=timestamp))
+    invisible(structure(scenario_evaluated, class="cts_scenario_evaluated", timestamp=timestamp))
 }
 
 
@@ -173,16 +199,32 @@ fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
 }
 
 
-# #' Scenario replication
-# #'  
-# #' @param scenario The [scenario] to replicate.
-# #' @param nreplicates The number of times to replicate the scenario.
-# #' @export
-# replication <- function(scenario, nreplicates) {
-# 
-#     stop("Not implemented yet")
-# 
-# }
+#' Scenario replication
+#'  
+#' @param scenario The [scenario] to replicate.
+#' @param nreplicates The number of times to replicate the scenario.
+#' @param collate A [collate] object for combining results across replicates. 
+#' @return A [scenario].
+#' @examples
+#' # A simple power calculation example
+#' power_scenario <- scenario(
+#'     simulation = simulation(
+#'         t.test(rnorm(10, mean=1), rnorm(10, mean=2))$p.value
+#'     )
+#' ) |> replication(nreplicates=1000,
+#'     collate = collate(
+#'         power = mean(sapply(replicates, getElement, name="simulation") < 0.05
+#'     )
+#' ))
+#' 
+#' x <- CTS(power_scenario)
+#' x$power
+#' @export
+replication <- function(scenario, nreplicates, collate=NULL) {
+
+    structure(scenario, class=c("cts_scenario_rep", class(scenario)), nreplicates=nreplicates, collate=collate)
+
+}
 
 # #' Add parameter uncertainty to a scenario
 # #'
@@ -196,22 +238,22 @@ fixup_scenario_table <- function(.path, scenario_table="scenarios.csv") {
 # }
 
 
-#' Collate simulation results from multiple scenarios
-#'
-#' This function can be used after running multiple scenarios with `CTS` to
-#' combine the results for further processing and output generation.
-#'
-#' @param x An object.
-#' @param ... Additional arguments (currently ignored).
-#' @param outputs (optional) A [cts_output] or [cts_output_list].
-#' @param .path The path containing the simulation results. This directory
-#' should contain the file `scenarios.csv` as well as subfolders for each
-#' scenario, as generated by [CTS()].
-#' @return A `data.frame`.
-#' @export
-collate <- function(x, ..., outputs=NULL) UseMethod("collate")
-
-
+# #' Collate simulation results from multiple scenarios
+# #'
+# #' This function can be used after running multiple scenarios with `CTS` to
+# #' combine the results for further processing and output generation.
+# #'
+# #' @param x An object.
+# #' @param ... Additional arguments (currently ignored).
+# #' @param outputs (optional) A [cts_output] or [cts_output_list].
+# #' @param .path The path containing the simulation results. This directory
+# #' should contain the file `scenarios.csv` as well as subfolders for each
+# #' scenario, as generated by [CTS()].
+# #' @return A `data.frame`.
+# #' @export
+# collate <- function(x, ..., outputs=NULL) UseMethod("collate")
+# 
+# 
 # #' @export
 # collate.cts_scenario_evaluated_list <- function(x, ..., what, scenario_table=get_scenario_table(x), outputs=NULL) {
 #     dat <- data.table(
@@ -229,9 +271,21 @@ collate <- function(x, ..., outputs=NULL) UseMethod("collate")
 # }
 
 
-#' @rdname collate
+#' Collate simulation results from multiple scenarios
+#'
+#' This function can be used after running multiple scenarios with `CTS` to
+#' combine the results for further processing and output generation.
+#'
+#' @param module A `character`. What is the module that generated the output?
+#' @param name A `character`. The name given to the output in the [scenario].
+#' @param ... Additional arguments (currently ignored).
+#' @param outputs (optional) A [cts_output] or [cts_output_list].
+#' @param .path The path containing the simulation results. This directory
+#' should contain the file `scenarios.csv` as well as subfolders for each
+#' scenario, as generated by [CTS()].
+#' @return A [data.table::data.table].
 #' @export
-collate.character <- function(x, ..., outputs=NULL, .path=file.path("cts_results", as.Date(Sys.time()))) {
+collate_csv_outputs <- function(module, name, ..., outputs=NULL, .path=file.path("cts_results", as.Date(Sys.time()))) {
 
     scenario_table <- data.table::fread(file.path(.path, "scenarios.csv"))
     scenario_table <- scenario_table[rev(!duplicated(rev(scenario)))]
@@ -240,13 +294,20 @@ collate.character <- function(x, ..., outputs=NULL, .path=file.path("cts_results
     keep <- sapply(scenario_table, function(x) !all(is.na(x)))
     scenario_table <- scenario_table[, keep, with=F]
 
-    scenario_files <- scenario_table[, list(file=file.path(.path, scenario, x)), by=scenario]
+    scenario_files <- scenario_table[, list(file=file.path(.path, scenario, module, name)), by=scenario]
 
-    f <- function(file, scenario) {
-        dat <- data.table::fread(file)
-        data.table(scenario, dat)
+    f <- function(file, scenario, nreplicates=NA) {
+        if (!is.null(nreplicates) && !is.na(nreplicates)) {
+            data.table::rbindlist(fill=T, lapply(seq_len(nreplicates), function(irep) {
+                dat <- data.table::fread(paste0(file, "_", irep, ".csv"))
+                data.table(scenario, irep, dat)
+            }))
+        } else {
+            dat <- data.table::fread(paste0(file, ".csv"))
+            data.table(scenario, dat)
+        }
     }
-    dat <- mapply(f, scenario_files$file, scenario_files$scenario, SIMPLIFY=F)
+    dat <- mapply(f, scenario_files$file, scenario_files$scenario, scenario_table$nreplicates %||% NA, SIMPLIFY=F)
     dat <- data.table::rbindlist(dat, fill=T)
 
     dat <- scenario_table[dat, on="scenario"]
@@ -330,6 +391,9 @@ get_outputs <- function(x) {
 #' functions that create modules are not meant to be called on their own, but
 #' rather inside a [scenario].
 #'
+#' The `collate` module is a bit different. It is used within [replication] to
+#' combine results across replicates.
+#'
 #' @param ... A named list of expressions.
 #' @param outputs (optional) A [cts_output] or [cts_output_list].
 #' @param seed (optional) Modules can be given a RNG seed, for reproducibility.
@@ -406,6 +470,11 @@ endpoints <- make_cts_module("endpoints")
 #' @rdname cts_module
 #' @export
 summarization <- make_cts_module("summarization")
+
+#' @rdname cts_module
+#' @export
+collate <- make_cts_module("collate")
+
 
 #' CTS module (pipe interface)
 #'
@@ -933,40 +1002,51 @@ cts_save <- function(x, ...) UseMethod("cts_save")
 
 # @internal
 #' @export
-cts_save.cts_output_list <- function(x, ..., .path) {
+cts_save.cts_output_list <- function(x, ..., irep=NULL, .path=NULL) {
     if (is.null(names(x))) {
         names(x) <- paste0("output", seq_along(x))
     }
     for (i in seq_along(x)) {
         set_name(x[[i]]) <- get_name(x[[i]]) %||% names(x)[i]
     }
-    lapply(x, cts_save, .path=.path)
+    lapply(x, cts_save, irep=irep, .path=.path)
 }
 
 # @internal
 #' @export
-cts_save.cts_graphical_output <- function(x, ..., .path) {
-    ggplot2::ggsave(plot=x, filename=file.path(.path, paste0(get_name(x), ".png")),
+cts_save.cts_graphical_output <- function(x, ..., irep=NULL, .path=NULL, .ext=".png") {
+    filename <- make_path(x=x, irep=irep, .path=.path, .ext=.ext)
+    ggplot2::ggsave(plot=x, filename=filename,
         width=(x %@% "width"), height=(x %@% "height"), ...)
 }
 
 # @internal
 #' @export
-cts_save.cts_csv_output <- function(x, ..., .path) {
-    data.table::fwrite(x=x, file=file.path(.path, paste0(get_name(x), ".csv")), ...)
+cts_save.cts_csv_output <- function(x, ..., irep=NULL, .path=NULL, .ext=".csv") {
+    filename <- make_path(x=x, irep=irep, .path=.path, .ext=.ext)
+    data.table::fwrite(x=x, file=filename, ...)
 }
 
 # # @internal
-# cts_save.cts_tabular_output <- function(x, ..., .path) {
+# cts_save.cts_tabular_output <- function(x, ..., irep=NULL, .path=NULL) {
 # }
 # 
 # # @internal
-# cts_save.cts_yaml_output <- function(x, ..., .path) {
+# cts_save.cts_yaml_output <- function(x, ..., irep=NULL, .path=NULL) {
 # }
 # 
 # # @internal
-# cts_save.cts_rds_output <- function(x, ..., .path) {
+# cts_save.cts_rds_output <- function(x, ..., irep=NULL, .path=NULL) {
 # }
+
+# @internal
+make_path <- function(x, irep, .path, .ext) {
+    name <- get_name(x)
+    if (!is.null(irep)) {
+        name <- paste0(name, "_", irep)
+    }
+    file.path(.path, paste0(name, .ext))
+}
 
 
 

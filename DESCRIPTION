@@ -1,7 +1,7 @@
 Package: ctsframework
 Type: Package
 Version: 1.0.0
-Date: 2025-06-06
+Date: 2025-06-12
 Title: Clinical Trial Simulation Framework
 Author: Benjamin Rich [aut, cre]
 Authors@R: person("Benjamin", "Rich", role=c("aut", "cre"), email="mail@benjaminrich.net")

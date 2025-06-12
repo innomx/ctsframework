@@ -80,7 +80,7 @@ is broken down into multiple steps or "modules":
 - **summarization**: This module is intended for summarizing results across
   individuals, such as taking means, medians, specific quantiles, etc. (Note:
   this module can only be used to summarize results within a scenario, not
-  across scenarios; the latter is the purpose of the `collate()` function,
+  across scenarios; the latter is the purpose of the collate function,
   described below).
 
 In fact, each module is very general, and essentially equivalent; each can
@@ -89,7 +89,7 @@ names are simply there to help make the code more organized and intentional.
 All the modules are optional.
 
 The power of the framework is that each module subitem can be overridden to
-creat a new scenario. At each step, the submitems of the modules that appear
+create a new scenario. At each step, the subitems of the modules that appear
 higher up are available and can be used in the subsequent computation. By
 mixing and matching different modules, it is easy to specify many different
 scenarios without a lot of code repetition.
@@ -120,7 +120,7 @@ set.seed(2755139)
 Now, we begin by defining our first scenario, which will be our "base" scenario
 (latter we will see how we can derive new scenarios from this one). The example
 will be to simulate from a simple 2-compartment population PK model (it could
-be a simplified monoclonal antibody model). This code block will apepar quite
+be a simplified monoclonal antibody model). This code block will appear quite
 long, but we will go through and explain each elements
 afterwards.
 
@@ -353,7 +353,7 @@ In an unnamed code block, the concentration-time profiles are generated using
 ```
 
 Next, we derive some "endpoints", in this case exposure metrics over the last
-treament interval, for each individual. For the first time, a module contains
+treatment interval, for each individual. For the first time, a module contains
 an output -- the resulting dataframe will be stored in a CSV file. The location
 of this CSV file will be explained later.
 
@@ -407,7 +407,7 @@ the subfolder named `summarization` contains these 2 plots:
 
 ```{r, eval=T, echo=F, fig.width=7, fig.height=5}
 x <- CTS(base_scenario, .path=cts_results_path)
-outputs <- attr(x$scenario$summarization, "outputs", exact=TRUE)
+outputs <- attr(attr(x, "scenario", exact=TRUE)$summarization, "outputs", exact=TRUE)
 outres <- rlang::eval_tidy(outputs, x)
 outres[[1]]
 outres[[2]]
@@ -415,7 +415,7 @@ outres[[2]]
 
 The way the folder structure is defined is as follows. When the `CTS()`
 function is called, a `.path` argument specifies the root path for the
-simulation; the defaut is `cts_results/dd-mm-yyyy`, where `dd-mm-yyyy` is the
+simulation; the default is `cts_results/dd-mm-yyyy`, where `dd-mm-yyyy` is the
 current date. Under this root folder, there will be a subfolder for each
 scenario, named according to the scenario name (each scenario has a name
 attribute, the default being `Scenario` followed by a sequential number). Then,
@@ -456,7 +456,7 @@ pick up the new code when the derived scenarios are run.
 
 ### Creating a scenario list
 
-Now, we could run each of the drived scenarios independently, but instead will
+Now, we could run each of the derived scenarios independently, but instead will
 will combine them into a list that can be run using a single call:
 
 ```{r, eval=F}
@@ -465,14 +465,14 @@ sclist <- scenario_list(base_scenario, scenario_fixed_200mg_q2w, scenario_fixed_
 CTS(sclist)
 ```
 
-All 3 scenario are execuated.
+All 3 scenario are executed.
 
 
 ### Creating a scenario grid
 
 Frequently, we want to explore all possible combinations of different factors.
 For this, we can use as scenario grid. Here, we will simulate each of 3 dosing
-regimens under 2 different models, one with extimated body weight exponents for
+regimens under 2 different models, one with estimated body weight exponents for
 allometric scaling, and the other with fixed (theoretical) exponents.  We can
 specify this as follows:
 
@@ -497,18 +497,18 @@ CTS(scgrid)
 
 Each of the 6 scenario will generate the same outputs as the base scenario,
 using the specified parameters and treatments. Again, we only need to specify
-the elements we wish to override.  Giving the modules discriptive names will be
+the elements we wish to override.  Giving the modules descriptive names will be
 helpful in the next section when we combine the various scenarios.
 
 ### Putting it all together
 
 While outputs from individual scenarios can be important, at the end of the
 day, the goal is often to produce a few key tables and/or figures that
-summarize and compare a collection of different scenarios. That is the purpose
-of the `collate()` function.
+summarize and compare a collection of different scenarios. We can use the
+`collate_csv_outputs()` function for this purpose:
 
 ```{r}
-dat <- collate("endpoints/sim-exposure.csv")
+dat <- collate_csv_outputs("endpoints", "sim-exposure")
 ```
 
 What happens is, the outputs generated separately for each scenario are merged

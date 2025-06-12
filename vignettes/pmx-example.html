@@ -396,8 +396,7 @@ this module is intended for.</p></li>
 summarizing results across individuals, such as taking means, medians,
 specific quantiles, etc. (Note: this module can only be used to
 summarize results within a scenario, not across scenarios; the latter is
-the purpose of the <code>collate()</code> function, described
-below).</p></li>
+the purpose of the collate function, described below).</p></li>
 </ul>
 <p>In fact, each module is very general, and essentially equivalent;
 each can contain any number of named items of arbitrary complexity. The
@@ -671,7 +670,7 @@ outputs using <code>ggplot</code>.</p>
 <p>To run the base scenario, we do the following:</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">CTS</span>(base_scenario)</span></code></pre></div>
 <p>After the scenario has finished running, there is a new folder in the
-current directory named “./cts_results/2025-06-06/Base Scenario” which
+current directory named “./cts_results/2025-06-12/Base Scenario” which
 contains the specified outputs each in their own subfolder corresponding
 to the name of the module where it was specified. For instance, the
 subfolder named <code>summarization</code> contains these 2 plots:</p>
@@ -759,9 +758,10 @@ the various scenarios.</p>
 <h3>Putting it all together</h3>
 <p>While outputs from individual scenarios can be important, at the end
 of the day, the goal is often to produce a few key tables and/or figures
-that summarize and compare a collection of different scenarios. That is
-the purpose of the <code>collate()</code> function.</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">collate</span>(<span class="st">&quot;endpoints/sim-exposure.csv&quot;</span>)</span></code></pre></div>
+that summarize and compare a collection of different scenarios. We can
+use the <code>collate_csv_outputs()</code> function for this
+purpose:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">collate_csv_outputs</span>(<span class="st">&quot;endpoints&quot;</span>, <span class="st">&quot;sim-exposure&quot;</span>)</span></code></pre></div>
 <p>What happens is, the outputs generated separately for each scenario
 are merged together, along with additional information like the names we
 gave to each of the modules.</p>

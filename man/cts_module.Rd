@@ -10,6 +10,7 @@
 \alias{simulation}
 \alias{endpoints}
 \alias{summarization}
+\alias{collate}
 \title{CTS modules}
 \usage{
 parameters(..., outputs = NULL, seed = NULL)
@@ -27,6 +28,8 @@ simulation(..., outputs = NULL, seed = NULL)
 endpoints(..., outputs = NULL, seed = NULL)
 
 summarization(..., outputs = NULL, seed = NULL)
+
+collate(..., outputs = NULL, seed = NULL)
 }
 \arguments{
 \item{...}{A named list of expressions.}
@@ -48,6 +51,9 @@ Each module has the same structure: it consists of a named list of
 expressions that are run in sequence when the scenario is executed. These
 functions that create modules are not meant to be called on their own, but
 rather inside a \link{scenario}.
+
+The \code{collate} module is a bit different. It is used within \link{replication} to
+combine results across replicates.
 }
 \examples{
 # A silly example that does nothing. For realistic examples, see the vignette.
