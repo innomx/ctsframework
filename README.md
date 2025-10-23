@@ -2,6 +2,7 @@
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/innomx/ctsframework/actions/workflows/check-standard.yaml/badge.svg)](https://github.com/innomx/ctsframework/actions/workflows/check-standard.yaml)
 ![experimental](https://badges.github.io/stability-badges/dist/experimental.svg)
 
 <!-- badges: end -->

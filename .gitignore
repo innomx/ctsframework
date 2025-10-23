@@ -4,8 +4,7 @@
 *.bak
 *.tmp
 *.temp
-temp*.*
-!template.*
+temp[_- ]*.*
 .Rhistory
 ..Rcheck
 *.Rproj

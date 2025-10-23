@@ -4,5 +4,9 @@
 ^cran-comments\.md$
 ^README\.Rmd$
 ^\.github$
-
+^CRAN-RELEASE$
 ^CRAN-SUBMISSION$
+^revdep$
+^.*\.Rproj$
+^\.Rproj\.user$
+^temp[ -_].*$
